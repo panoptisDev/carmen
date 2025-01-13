@@ -24,12 +24,12 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Fantom-foundation/Carmen/go/backend/stock"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/file"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/memory"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/synced"
-	"github.com/Fantom-foundation/Carmen/go/common"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/shared"
+	"github.com/0xsoniclabs/carmen/go/backend/stock"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/file"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/memory"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/synced"
+	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
 )
 
 type StorageMode bool

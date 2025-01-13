@@ -13,7 +13,7 @@ package utils
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/Fantom-foundation/Carmen/go/fuzzing"
+	"github.com/0xsoniclabs/carmen/go/fuzzing"
 	"strings"
 	"testing"
 )

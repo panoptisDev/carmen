@@ -19,13 +19,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/backend/stock"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/file"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/memory"
-	"github.com/Fantom-foundation/Carmen/go/backend/stock/shadow"
-	"github.com/Fantom-foundation/Carmen/go/common"
-	"github.com/Fantom-foundation/Carmen/go/common/amount"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/shared"
+	"github.com/0xsoniclabs/carmen/go/backend/stock"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/file"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/memory"
+	"github.com/0xsoniclabs/carmen/go/backend/stock/shadow"
+	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
 	"go.uber.org/mock/gomock"
 )
 

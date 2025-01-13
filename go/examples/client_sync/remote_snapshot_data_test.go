@@ -13,7 +13,7 @@ package demo
 import (
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/backend"
+	"github.com/0xsoniclabs/carmen/go/backend"
 )
 
 func TestRemoteSnapshotData_IsSnapshoutData(t *testing.T) {

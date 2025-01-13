@@ -20,15 +20,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/backend"
-	"github.com/Fantom-foundation/Carmen/go/common"
-	"github.com/Fantom-foundation/Carmen/go/common/amount"
-	"github.com/Fantom-foundation/Carmen/go/state"
-	"github.com/Fantom-foundation/Carmen/go/state/gostate"
+	"github.com/0xsoniclabs/carmen/go/backend"
+	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/exp/maps"
 
-	_ "github.com/Fantom-foundation/Carmen/go/state/cppstate"
+	_ "github.com/0xsoniclabs/carmen/go/state/cppstate"
 )
 
 var (

@@ -12,8 +12,8 @@ package file
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/Carmen/go/backend/pagepool"
-	"github.com/Fantom-foundation/Carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/backend/pagepool"
+	"github.com/0xsoniclabs/carmen/go/common"
 	"unsafe"
 )
 

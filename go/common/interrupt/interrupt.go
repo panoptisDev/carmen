@@ -17,7 +17,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Fantom-foundation/Carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/common"
 )
 
 const ErrCanceled = common.ConstError("interrupted")

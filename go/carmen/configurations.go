@@ -13,8 +13,8 @@ package carmen
 import (
 	"fmt"
 
-	"github.com/Fantom-foundation/Carmen/go/state"
-	"github.com/Fantom-foundation/Carmen/go/state/gostate"
+	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"golang.org/x/exp/maps"
 )
 

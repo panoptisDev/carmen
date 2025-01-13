@@ -15,12 +15,12 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/Fantom-foundation/Carmen/go/common/amount"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/shared"
-	"github.com/Fantom-foundation/Carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
+	"github.com/0xsoniclabs/carmen/go/state"
 
-	"github.com/Fantom-foundation/Carmen/go/backend"
-	"github.com/Fantom-foundation/Carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/backend"
+	"github.com/0xsoniclabs/carmen/go/common"
 )
 
 //go:generate mockgen -source state.go -destination state_mocks.go -package mpt

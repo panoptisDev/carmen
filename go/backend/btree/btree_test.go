@@ -17,7 +17,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/common"
 )
 
 var (

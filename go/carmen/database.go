@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/Carmen/go/common"
-	"github.com/Fantom-foundation/Carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/state"
 )
 
 const errDbClosed = common.ConstError("database is already closed")

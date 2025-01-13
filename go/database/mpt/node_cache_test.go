@@ -18,7 +18,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/shared"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
 )
 
 func TestNodeCache_ElementsCanBeStoredAndRetrieved(t *testing.T) {

@@ -11,11 +11,11 @@
 package experimental
 
 import (
-	"github.com/Fantom-foundation/Carmen/go/carmen"
-	"github.com/Fantom-foundation/Carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/carmen"
+	"github.com/0xsoniclabs/carmen/go/state"
 
-	_ "github.com/Fantom-foundation/Carmen/go/state/cppstate"
-	_ "github.com/Fantom-foundation/Carmen/go/state/gostate"
+	_ "github.com/0xsoniclabs/carmen/go/state/cppstate"
+	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
 )
 
 // GetDatabaseConfigurations returns a list of experimental database configurations

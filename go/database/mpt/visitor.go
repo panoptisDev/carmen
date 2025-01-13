@@ -14,7 +14,7 @@ package mpt
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/Carmen/go/common/tribool"
+	"github.com/0xsoniclabs/carmen/go/common/tribool"
 	"strings"
 )
 

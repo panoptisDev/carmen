@@ -15,7 +15,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Fantom-foundation/Carmen/go/backend/utils/checkpoint"
+	"github.com/0xsoniclabs/carmen/go/backend/utils/checkpoint"
 )
 
 type IntEncoder struct{}
