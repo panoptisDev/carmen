@@ -8,7 +8,6 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-// Deprecated: external users should switch to the carmen package as the new top-level API
 package state
 
 import (
@@ -28,8 +27,6 @@ import (
 
 // VmStateDB defines the basic operations that can be conducted on a StateDB as
 // required by an EVM implementation.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 type VmStateDB interface {
 	// Account management.
 	CreateAccount(common.Address)
@@ -108,8 +105,6 @@ type VmStateDB interface {
 }
 
 // StateDB serves as the public interface definition of a Carmen StateDB.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 type StateDB interface {
 	VmStateDB
 
@@ -150,8 +145,6 @@ type StateDB interface {
 // be permanently modified. The prime example for those are views on historic blocks backed
 // by an archive. While volatile transaction internal changes are supported, there is no
 // way offered for committing those.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 type NonCommittableStateDB interface {
 	VmStateDB
 
@@ -174,8 +167,6 @@ type NonCommittableStateDB interface {
 }
 
 // BulkLoad serves as the public interface for loading preset data into the state DB.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 type BulkLoad interface {
 	CreateAccount(common.Address)
 	SetBalance(common.Address, amount.Amount)
@@ -412,8 +403,6 @@ type storedDataCacheValue struct {
 // all operations including end-of-block operations mutating the underlying state.
 // Note: any StateDB instanced becomes invalid if the underlying state is
 // modified by any other StateDB instance or through any other direct modification.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 func CreateStateDBUsing(state State) StateDB {
 	return CreateCustomStateDBUsing(state, defaultStoredDataCacheSize)
 }
@@ -423,8 +412,6 @@ func CreateStateDBUsing(state State) StateDB {
 // cache size used by CreateCustomStateDBUsing may be too large if StateDB instances
 // only have a short live time. In such cases, the initialization and destruction of
 // the maintained data cache may dominate execution time.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 func CreateCustomStateDBUsing(state State, storedDataCacheSize int) StateDB {
 	if storedDataCacheSize <= 0 {
 		storedDataCacheSize = defaultStoredDataCacheSize
@@ -436,8 +423,6 @@ func CreateCustomStateDBUsing(state State, storedDataCacheSize int) StateDB {
 // the given state supporting all operations specified by the VmStateDB interface.
 // Note: any StateDB instanced becomes invalid if the underlying state is
 // modified by any other StateDB instance or through any other direct modification.
-//
-// Deprecated: external users should switch to the carmen package as the new top-level API
 func CreateNonCommittableStateDBUsing(state State) NonCommittableStateDB {
 	// Since StateDB instances are big objects costly to create we reuse those using
 	// a pool of objects. However, instances need to be properly reset.
