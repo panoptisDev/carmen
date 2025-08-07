@@ -41,9 +41,12 @@ import (
 const CodeCacheSize = 8_000 // ~ 200 MiB of memory for go-side code cache
 const CodeMaxSize = 25000   // Contract limit is 24577
 
-// CppState implements the state interface by forwarding all calls to a C++ based implementation.
+// CppState implements the state interface by forwarding all calls to a C++
+// based implementation.
 type CppState struct {
 	// A pointer to an owned C++ object containing the actual state information.
+	database unsafe.Pointer
+	// A view on the state of the database (either live state or archive state).
 	state unsafe.Pointer
 	// cache of contract codes
 	codeCache *common.LruCache[common.Address, []byte]
@@ -68,13 +71,20 @@ func newState(impl C.enum_LiveImpl, params state.Parameters) (state.State, error
 		return nil, fmt.Errorf("%w: unsupported archive type %v", state.UnsupportedConfiguration, params.Archive)
 	}
 
-	st := C.Carmen_Cpp_OpenState(C.C_Schema(params.Schema), impl, C.enum_LiveImpl(archive), dir, C.int(len(params.Directory)))
-	if st == unsafe.Pointer(nil) {
-		return nil, fmt.Errorf("%w: failed to create C++ state instance for parameters %v", state.UnsupportedConfiguration, params)
+	db := C.Carmen_Cpp_OpenDatabase(C.C_Schema(params.Schema), impl, C.enum_ArchiveImpl(archive), dir, C.int(len(params.Directory)))
+	if db == unsafe.Pointer(nil) {
+		return nil, fmt.Errorf("%w: failed to create C++ database instance for parameters %v", state.UnsupportedConfiguration, params)
+	}
+
+	live := C.Carmen_Cpp_GetLiveState(db)
+	if live == unsafe.Pointer(nil) {
+		C.Carmen_Cpp_ReleaseDatabase(db)
+		return nil, fmt.Errorf("%w: failed to create C++ live state instance for parameters %v", state.UnsupportedConfiguration, params)
 	}
 
 	return state.WrapIntoSyncedState(&CppState{
-		state:     st,
+		database:  db,
+		state:     live,
 		codeCache: common.NewLruCache[common.Address, []byte](CodeCacheSize),
 	}), nil
 }
@@ -210,15 +220,17 @@ func (cs *CppState) Apply(block uint64, update common.Update) error {
 }
 
 func (cs *CppState) Flush() error {
-	C.Carmen_Cpp_Flush(cs.state)
+	C.Carmen_Cpp_Flush(cs.database)
 	return nil
 }
 
 func (cs *CppState) Close() error {
 	if cs.state != nil {
-		C.Carmen_Cpp_Close(cs.state)
 		C.Carmen_Cpp_ReleaseState(cs.state)
 		cs.state = nil
+		C.Carmen_Cpp_Close(cs.database)
+		C.Carmen_Cpp_ReleaseDatabase(cs.database)
+		cs.database = nil
 	}
 	return nil
 }
@@ -240,14 +252,14 @@ func (s *CppState) GetSnapshotVerifier(metadata []byte) (backend.SnapshotVerifie
 }
 
 func (cs *CppState) GetMemoryFootprint() *common.MemoryFootprint {
-	if cs.state == nil {
+	if cs.database == nil {
 		return common.NewMemoryFootprint(unsafe.Sizeof(*cs))
 	}
 
 	// Fetch footprint data from C++.
 	var buffer *C.char
 	var size C.uint64_t
-	C.Carmen_Cpp_GetMemoryFootprint(cs.state, &buffer, &size)
+	C.Carmen_Cpp_GetMemoryFootprint(cs.database, &buffer, &size)
 	defer func() {
 		C.Carmen_Cpp_ReleaseMemoryFootprintBuffer(buffer, size)
 	}()
@@ -270,7 +282,7 @@ func (cs *CppState) GetMemoryFootprint() *common.MemoryFootprint {
 
 func (cs *CppState) GetArchiveState(block uint64) (state.State, error) {
 	return &CppState{
-		state:     C.Carmen_Cpp_GetArchiveState(cs.state, C.uint64_t(block)),
+		state:     C.Carmen_Cpp_GetArchiveState(cs.database, C.uint64_t(block)),
 		codeCache: common.NewLruCache[common.Address, []byte](CodeCacheSize),
 	}, nil
 }
