@@ -18,7 +18,7 @@ import (
 )
 
 // Run using
-//  go run ./database/mpt/tool <command> <flags>
+//  go run ./state/tool <command> <flags>
 
 var (
 	diagnosticsFlag = cli.IntFlag{
@@ -36,34 +36,21 @@ var (
 		Usage: "sets the target file for traces to, disabled if empty",
 		Value: "",
 	}
-
-	commands = []*cli.Command{
-		&Check,
-		&ExportCmd,
-		&ImportLiveDbCmd,
-		&ImportArchiveCmd,
-		&ImportLiveAndArchiveCmd,
-		&Info,
-		&InitArchive,
-		&Verify,
-		&VerifyProof,
-		&Block,
-		&StressTestCmd,
-		&Reset,
-	}
 )
 
 func main() {
 	app := &cli.App{
 		Name:      "tool",
-		Usage:     "Carmen MPT toolbox",
+		Usage:     "Carmen State toolbox",
 		Copyright: "(c) 2022-25 Sonic Operations Ltd",
 		Flags: []cli.Flag{
 			&diagnosticsFlag,
 			&cpuProfileFlag,
 			&traceFlag,
 		},
-		Commands: commands,
+		Commands: []*cli.Command{
+			&Benchmark,
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
