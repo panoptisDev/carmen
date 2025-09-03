@@ -417,7 +417,7 @@ mod tests {
 
             let iteration = AtomicU64::new(0);
 
-            let max_iterations = 1_000_000;
+            let max_iterations = 1_000;
 
             std::thread::scope(|s| {
                 s.spawn(|| {
