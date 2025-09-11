@@ -22,9 +22,9 @@ use std::{
 /// that there are no data races) as long as they operate on non-overlapping regions of the file.
 /// When called with overlapping regions, the behavior is undefined and may lead to data corruption.
 #[cfg_attr(test, mockall::automock)]
-pub trait FileBackend {
+pub trait FileBackend: Send + Sync {
     /// Opens a file at the given path with the specified options and tries to acquire a file lock.
-    fn open(path: &Path, options: &OpenOptions) -> std::io::Result<Self>
+    fn open(path: &Path, options: OpenOptions) -> std::io::Result<Self>
     where
         Self: Sized;
 
@@ -50,7 +50,7 @@ pub trait FileBackend {
 pub struct SeekFile(Mutex<std::fs::File>);
 
 impl FileBackend for SeekFile {
-    fn open(path: &Path, options: &OpenOptions) -> std::io::Result<Self>
+    fn open(path: &Path, options: OpenOptions) -> std::io::Result<Self>
     where
         Self: Sized,
     {
@@ -92,7 +92,7 @@ pub struct NoSeekFile(std::fs::File);
 
 #[cfg(unix)]
 impl FileBackend for NoSeekFile {
-    fn open(path: &Path, options: &OpenOptions) -> std::io::Result<Self>
+    fn open(path: &Path, options: OpenOptions) -> std::io::Result<Self>
     where
         Self: Sized,
     {
@@ -127,26 +127,26 @@ mod tests {
     use std::{
         fs::{File, OpenOptions},
         io::{Read, Write},
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            Arc,
+            atomic::{AtomicU64, Ordering},
+        },
     };
 
     use super::*;
     use crate::utils::test_dir::{Permissions, TestDir};
 
-    fn open_backends() -> impl Iterator<
-        Item = fn(&Path, &OpenOptions) -> std::io::Result<Box<dyn FileBackend + Send + Sync>>,
-    > {
+    fn open_backends()
+    -> impl Iterator<Item = fn(&Path, OpenOptions) -> std::io::Result<Arc<dyn FileBackend>>> {
         [
             (|path, options| {
                 <SeekFile as FileBackend>::open(path, options)
-                    .map(|f| Box::new(f) as Box<dyn FileBackend + Send + Sync>)
-            })
-                as fn(&Path, &OpenOptions) -> std::io::Result<Box<dyn FileBackend + Send + Sync>>,
+                    .map(|f| Arc::new(f) as Arc<dyn FileBackend>)
+            }) as fn(&Path, OpenOptions) -> _,
             (|path, options| {
                 <NoSeekFile as FileBackend>::open(path, options)
-                    .map(|f| Box::new(f) as Box<dyn FileBackend + Send + Sync>)
-            })
-                as fn(&Path, &OpenOptions) -> std::io::Result<Box<dyn FileBackend + Send + Sync>>,
+                    .map(|f| Arc::new(f) as Arc<dyn FileBackend>)
+            }) as fn(&Path, OpenOptions) -> _,
         ]
         .into_iter()
     }
@@ -161,7 +161,7 @@ mod tests {
 
         for (i, backend) in open_backends().enumerate() {
             let path = dir.join(format!("test_file_{i}.bin"));
-            let file = backend(path.as_path(), &options);
+            let file = backend(path.as_path(), options.clone());
             assert!(file.unwrap().len().unwrap() == 0);
             assert!(std::fs::exists(path).unwrap());
         }
@@ -183,7 +183,7 @@ mod tests {
                 file.write_all(&[0; 10]).unwrap();
             }
 
-            let file = backend(path.as_path(), &options);
+            let file = backend(path.as_path(), options.clone());
             assert!(file.unwrap().len().unwrap() == 10);
         }
     }
@@ -200,11 +200,11 @@ mod tests {
             let path = dir.join(format!("test_file_{i}.bin"));
 
             // open the file once and lock it
-            let file = backend(path.as_path(), &options);
+            let file = backend(path.as_path(), options.clone());
             assert!(file.is_ok());
 
             // try to open it again, should fail
-            let file = backend(path.as_path(), &options);
+            let file = backend(path.as_path(), options.clone());
             assert!(file.map(|_| ()).unwrap_err().kind() == std::io::ErrorKind::WouldBlock);
         }
     }
@@ -222,7 +222,7 @@ mod tests {
         options.read(true).write(true);
 
         for backend in open_backends() {
-            let file = backend(path.as_path(), &options);
+            let file = backend(path.as_path(), options.clone());
             assert!(file.is_err());
         }
     }
@@ -242,7 +242,7 @@ mod tests {
             let path = dir.join(format!("test_file_{i}.bin"));
 
             {
-                let file = backend(path.as_path(), &options).unwrap();
+                let file = backend(path.as_path(), options.clone()).unwrap();
                 file.write_all_at(&data, offset).unwrap();
             }
             // file: [_, _, _, _, _, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
@@ -276,7 +276,7 @@ mod tests {
             // file: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]
             // read:                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-            let file = backend(path.as_path(), &options).unwrap();
+            let file = backend(path.as_path(), options.clone()).unwrap();
             let mut buf = [0; 10];
             file.read_exact_at(&mut buf, 5).unwrap();
             assert_eq!(buf[..5], [1; 5]);
@@ -299,7 +299,7 @@ mod tests {
                 File::create(path.as_path()).unwrap();
             }
 
-            let file = backend(path.as_path(), &options).unwrap();
+            let file = backend(path.as_path(), options.clone()).unwrap();
             let mut buf = [0; 5];
             let res = file.read_exact_at(&mut buf, 5);
             assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
@@ -319,7 +319,7 @@ mod tests {
 
             // flush with no changes
             {
-                let file = backend(path.as_path(), &options).unwrap();
+                let file = backend(path.as_path(), options.clone()).unwrap();
                 file.flush().unwrap();
 
                 let file = File::open(path.as_path()).unwrap();
@@ -328,7 +328,7 @@ mod tests {
 
             // flush with changes
             {
-                let file = backend(path.as_path(), &options).unwrap();
+                let file = backend(path.as_path(), options.clone()).unwrap();
                 file.write_all_at(&[1; 10], 0).unwrap();
                 file.flush().unwrap();
 
@@ -353,7 +353,7 @@ mod tests {
             let path = dir.join(format!("test_file_{i}.bin"));
 
             {
-                let file = backend(path.as_path(), &options).unwrap();
+                let file = backend(path.as_path(), options.clone()).unwrap();
                 file.write_all_at(&[1; 10], 0).unwrap();
             }
 
@@ -376,7 +376,7 @@ mod tests {
         for (i, backend) in open_backends().enumerate() {
             let path = dir.join(format!("test_file_{i}.bin"));
 
-            let file = backend(path.as_path(), &options).unwrap();
+            let file = backend(path.as_path(), options.clone()).unwrap();
             file.write_all_at(&[1; 10], 0).unwrap();
             assert_eq!(file.len().unwrap(), 10);
         }
@@ -393,7 +393,7 @@ mod tests {
         for (i, backend) in open_backends().enumerate() {
             let path = dir.join(format!("test_file_{i}.bin"));
 
-            let file = backend(path.as_path(), &options).unwrap();
+            let file = backend(path.as_path(), options.clone()).unwrap();
             file.write_all_at(&[1; 200], 0).unwrap();
             file.set_len(100).unwrap();
 
@@ -413,7 +413,7 @@ mod tests {
         for (i, backend) in open_backends().enumerate() {
             let path = dir.join(format!("test_file_{i}.bin"));
 
-            let file = backend(path.as_path(), &options).unwrap();
+            let file = backend(path.as_path(), options.clone()).unwrap();
 
             let iteration = AtomicU64::new(0);
 
