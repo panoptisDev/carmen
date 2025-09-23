@@ -16,8 +16,9 @@ use crate::storage::file::{
 };
 
 /// The actual implementation of [`PageCachedFile<F>`], but without concurrency control.
+/// The generic parameter `D` controls whether to use direct I/O (`true`) or not (`false`).
 #[derive(Debug)]
-struct InnerPageCachedFile<F: FileBackend> {
+struct InnerPageCachedFile<F: FileBackend, const D: bool> {
     file: F,
     /// The logical file size, which may be smaller than the actual file size which is padded to a
     /// multiple of [`Page::SIZE`].
@@ -30,7 +31,7 @@ struct InnerPageCachedFile<F: FileBackend> {
 // All methods in this impl except for `load_page_at_offset` correspond to the methods in
 // `FileBackend`, except that they take mutable references since [`PageCachedFile`] adds the
 // synchronization on top using a mutex.
-impl<F: FileBackend> InnerPageCachedFile<F> {
+impl<F: FileBackend, const D: bool> InnerPageCachedFile<F, D> {
     /// See [`FileBackend::open`].
     fn open(path: &Path, mut options: OpenOptions) -> std::io::Result<Self> {
         let file = F::open(path, options.clone())?;
@@ -39,7 +40,9 @@ impl<F: FileBackend> InnerPageCachedFile<F> {
         file.set_len(padded_len)?;
         drop(file);
 
-        options.custom_flags(O_DIRECT | O_SYNC);
+        if D {
+            options.custom_flags(O_DIRECT | O_SYNC);
+        }
         let file = F::open(path, options)?;
 
         let mut page = Box::new(Page::zeroed());
@@ -122,26 +125,47 @@ impl<F: FileBackend> InnerPageCachedFile<F> {
         if offset < self.page_index * Page::SIZE as u64
             || offset >= (self.page_index + 1) * Page::SIZE as u64
         {
-            // O_DIRECT requires reads and writes to operate on page aligned chunks with sizes that
-            // are multiples of the page size. So the file is padded to have a size of a multiple of
-            // the page size.
-            let padded_len = self.file_len.div_ceil(Page::SIZE as u64) * Page::SIZE as u64;
-            if self.file_len < padded_len {
-                self.file.set_len(padded_len)?;
-            }
+            if D {
+                let padded_len = self.file_len.div_ceil(Page::SIZE as u64) * Page::SIZE as u64;
+                // O_DIRECT requires reads and writes to operate on page aligned chunks with sizes
+                // that are multiples of the page size. So the file is padded to
+                // have a size of a multiple of the page size.
+                if self.file_len < padded_len {
+                    self.file.set_len(padded_len)?;
+                }
 
-            if self.page_dirty {
-                self.file
-                    .write_all_at(&self.page, self.page_index * Page::SIZE as u64)?;
-            }
+                if self.page_dirty {
+                    self.file
+                        .write_all_at(&self.page, self.page_index * Page::SIZE as u64)?;
+                }
 
-            self.page_index = offset / Page::SIZE as u64;
-            if padded_len <= self.page_index * Page::SIZE as u64 {
-                self.page.fill(0);
+                self.page_index = offset / Page::SIZE as u64;
+                if padded_len <= self.page_index * Page::SIZE as u64 {
+                    self.page.fill(0);
+                } else {
+                    self.file
+                        .read_exact_at(&mut self.page, self.page_index * Page::SIZE as u64)?;
+                }
             } else {
+                if self.page_dirty {
+                    self.file
+                        .write_all_at(&self.page, self.page_index * Page::SIZE as u64)?;
+                }
+
+                self.page_index = offset / Page::SIZE as u64;
+                // Without O_DIRECT, the file size is not padded and we may read a partial page.
+                let len = cmp::min(
+                    self.file_len
+                        .saturating_sub(self.page_index * Page::SIZE as u64)
+                        as usize,
+                    Page::SIZE,
+                );
                 self.file
-                    .read_exact_at(&mut self.page, self.page_index * Page::SIZE as u64)?;
+                    .read_exact_at(&mut self.page[..len], self.page_index * Page::SIZE as u64)?;
+                // In case we read a partial page, set the remainder to zero.
+                self.page[len..].fill(0);
             }
+
             self.page_dirty = false;
         }
         Ok(())
@@ -151,11 +175,11 @@ impl<F: FileBackend> InnerPageCachedFile<F> {
 /// A wrapper around a [`FileBackend`] that caches a single page (4096 bytes) in memory.
 /// All read and write operations are performed on this page, which is flushed to the underlying
 /// file when it is dirty and a different page is accessed, or when the file is flushed or dropped.
-/// All file operations use direct I/O to bypass the OS page cache.
+/// The generic parameter `D` controls whether to use direct I/O (`true`) or not (`false`).
 #[derive(Debug)]
-pub struct PageCachedFile<F: FileBackend>(Mutex<InnerPageCachedFile<F>>);
+pub struct PageCachedFile<F: FileBackend, const D: bool>(Mutex<InnerPageCachedFile<F, D>>);
 
-impl<F: FileBackend> FileBackend for PageCachedFile<F> {
+impl<F: FileBackend, const D: bool> FileBackend for PageCachedFile<F, D> {
     fn open(path: &Path, options: OpenOptions) -> std::io::Result<Self> {
         Ok(Self(Mutex::new(InnerPageCachedFile::open(path, options)?)))
     }
@@ -181,7 +205,7 @@ impl<F: FileBackend> FileBackend for PageCachedFile<F> {
     }
 }
 
-impl<F: FileBackend> Drop for PageCachedFile<F> {
+impl<F: FileBackend, const D: bool> Drop for PageCachedFile<F, D> {
     fn drop(&mut self) {
         let _ = self.0.lock().unwrap().flush();
     }
@@ -199,7 +223,7 @@ mod tests {
         // no expectations on the mock because there should not be no I/O operations.
         let _file = MockFileBackend::new();
 
-        let file = PageCachedFile(Mutex::new(InnerPageCachedFile {
+        let file = PageCachedFile::<_, true>(Mutex::new(InnerPageCachedFile {
             file: _file,
             file_len: 4096,
             page: Box::new(Page::zeroed()),
@@ -236,7 +260,7 @@ mod tests {
                 Ok(())
             });
 
-        let file = PageCachedFile(Mutex::new(InnerPageCachedFile {
+        let file = PageCachedFile::<_, true>(Mutex::new(InnerPageCachedFile {
             file: _file,
             file_len: 8192,
             page: Box::new(Page::zeroed()),

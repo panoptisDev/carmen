@@ -11,14 +11,15 @@
 use std::{
     fmt::Display,
     fs::{File, OpenOptions},
+    io::Write,
     path::Path,
     sync::Arc,
 };
 
 use carmen_rust::storage::file::{FileBackend, NoSeekFile, PageCachedFile, SeekFile};
 use criterion::{
-    BenchmarkGroup, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
-    measurement::Measurement,
+    BenchmarkGroup, BenchmarkId, Criterion, PlotConfiguration, Throughput, criterion_group,
+    criterion_main, measurement::Measurement,
 };
 
 const FILE_SIZE: usize = 10 * 1024 * 1024 * 1024; // 10GB
@@ -28,21 +29,35 @@ const FILE_SIZE: usize = 10 * 1024 * 1024 * 1024; // 10GB
 enum AccessPattern {
     /// Always use the offset 0.
     Static,
-    /// Always advances the offset by the chunk size.
+    /// Advances the offset by the chunk size.
     Linear,
+    /// Use a random offset.
+    Random,
 }
 
 impl AccessPattern {
     /// Returns all access patterns.
-    fn variants() -> [AccessPattern; 2] {
-        [AccessPattern::Static, AccessPattern::Linear]
+    fn variants() -> impl IntoIterator<Item = AccessPattern> {
+        [
+            AccessPattern::Static,
+            AccessPattern::Linear,
+            AccessPattern::Random,
+        ]
     }
 
     /// Returns the offset for the given iteration and chunk size.
-    fn offset(self, iter: usize, chunk_size: usize) -> u64 {
+    fn offset(self, iter: u64, chunk_size: usize) -> u64 {
         match self {
             AccessPattern::Static => 0,
-            AccessPattern::Linear => ((iter * chunk_size) % FILE_SIZE) as u64,
+            AccessPattern::Linear => (iter * chunk_size as u64) % FILE_SIZE as u64,
+            AccessPattern::Random => {
+                // splitmix64
+                let rand = iter + 0x9e3779b97f4a7c15;
+                let rand = (rand ^ (rand >> 30)) * 0xbf58476d1ce4e5b9;
+                let rand = (rand ^ (rand >> 27)) * 0x94d049bb133111eb;
+                let rand = rand ^ (rand >> 31);
+                (rand * chunk_size as u64) % FILE_SIZE as u64
+            }
         }
     }
 }
@@ -52,6 +67,47 @@ impl Display for AccessPattern {
         match self {
             AccessPattern::Static => write!(f, "static"),
             AccessPattern::Linear => write!(f, "linear"),
+            AccessPattern::Random => write!(f, "random"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Operation {
+    Read,
+    Write,
+    Mixed,
+}
+
+impl Operation {
+    // The number of reads performed for each write in the "mixed" operation.
+    const MIXED_WRITE_RATIO: u64 = 10;
+
+    fn variants() -> impl IntoIterator<Item = Operation> {
+        [Operation::Read, Operation::Write, Operation::Mixed]
+    }
+
+    fn execute(self, backend: &dyn FileBackend, data: &mut [u8], offset: u64, iter: u64) {
+        match self {
+            Operation::Read => backend.read_exact_at(data, offset).unwrap(),
+            Operation::Write => backend.write_all_at(data, offset).unwrap(),
+            Operation::Mixed => {
+                if iter.is_multiple_of(Self::MIXED_WRITE_RATIO) {
+                    backend.write_all_at(data, offset).unwrap();
+                } else {
+                    backend.read_exact_at(data, offset).unwrap();
+                }
+            }
+        }
+    }
+}
+
+impl Display for Operation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operation::Read => write!(f, "read"),
+            Operation::Write => write!(f, "write"),
+            Operation::Mixed => write!(f, "mixed-{}%write", 100.0 / Self::MIXED_WRITE_RATIO as f64),
         }
     }
 }
@@ -77,10 +133,10 @@ pub fn backend_open_fns() -> impl Iterator<Item = BackendOpenFn> {
         #[cfg(unix)]
         {
             (|path, options| {
-                <PageCachedFile<SeekFile> as FileBackend>::open(path, options).map(|f| {
+                <PageCachedFile<SeekFile, true> as FileBackend>::open(path, options).map(|f| {
                     (
                         Arc::new(f) as Arc<dyn FileBackend>,
-                        "PageCachedFile<SeekFile>",
+                        "PageCachedFile<SeekFile, true>",
                     )
                 })
             }) as BackendOpenFn
@@ -88,10 +144,32 @@ pub fn backend_open_fns() -> impl Iterator<Item = BackendOpenFn> {
         #[cfg(unix)]
         {
             (|path, options| {
-                <PageCachedFile<NoSeekFile> as FileBackend>::open(path, options).map(|f| {
+                <PageCachedFile<NoSeekFile, true> as FileBackend>::open(path, options).map(|f| {
                     (
                         Arc::new(f) as Arc<dyn FileBackend>,
-                        "PageCachedFile<NoSeekFile>",
+                        "PageCachedFile<NoSeekFile, true>",
+                    )
+                })
+            }) as BackendOpenFn
+        },
+        #[cfg(unix)]
+        {
+            (|path, options| {
+                <PageCachedFile<SeekFile, false> as FileBackend>::open(path, options).map(|f| {
+                    (
+                        Arc::new(f) as Arc<dyn FileBackend>,
+                        "PageCachedFile<SeekFile, false>",
+                    )
+                })
+            }) as BackendOpenFn
+        },
+        #[cfg(unix)]
+        {
+            (|path, options| {
+                <PageCachedFile<NoSeekFile, false> as FileBackend>::open(path, options).map(|f| {
+                    (
+                        Arc::new(f) as Arc<dyn FileBackend>,
+                        "PageCachedFile<NoSeekFile, false>",
                     )
                 })
             }) as BackendOpenFn
@@ -100,23 +178,9 @@ pub fn backend_open_fns() -> impl Iterator<Item = BackendOpenFn> {
     .into_iter()
 }
 
-fn write_benchmarks(c: &mut Criterion) {
-    let mut group = c.benchmark_group("file_backend/write");
-    for access in AccessPattern::variants() {
-        for chunk_size in [32, 4096] {
-            for backend_fn in backend_open_fns() {
-                write(&mut group, access, chunk_size, backend_fn);
-            }
-        }
-    }
-}
+fn file_backend_benchmark_matrix(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic);
 
-fn write<M: Measurement>(
-    g: &mut BenchmarkGroup<'_, M>,
-    access: AccessPattern,
-    chunk_size: usize,
-    backend_fn: BackendOpenFn,
-) {
     // Note: At least on Ubuntu, reading and writing to a file which is located directly in `/tmp`
     // is slower than with a file in a subdirectory of `/tmp`.
     let tempdir = tempfile::tempdir().unwrap();
@@ -124,32 +188,61 @@ fn write<M: Measurement>(
     let path = path.as_path();
 
     {
-        let file = File::create(path).unwrap();
-        file.set_len(FILE_SIZE as u64).unwrap();
+        const ONE_GB: usize = 1024 * 1024 * 1024;
+        let mut file = File::create(path).unwrap();
+        let data_1gb = vec![0; ONE_GB];
+        for _ in 0..(FILE_SIZE / ONE_GB) {
+            file.write_all(&data_1gb).unwrap();
+        }
+        // Note: Using File::set_len creates sparse files on some file systems which results in
+        // unrealistic read performance.
     }
 
+    for operation in Operation::variants() {
+        for access in AccessPattern::variants() {
+            for chunk_size in [32, 4096] {
+                let mut group =
+                    c.benchmark_group(format!("file_backend/{operation}/{access}/{chunk_size}B"));
+                group.plot_config(plot_config.clone());
+                for backend_fn in backend_open_fns() {
+                    file_backend_benchmark(
+                        &mut group, path, operation, access, chunk_size, backend_fn,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn file_backend_benchmark<M: Measurement>(
+    g: &mut BenchmarkGroup<'_, M>,
+    path: &Path,
+    operation: Operation,
+    access: AccessPattern,
+    chunk_size: usize,
+    backend_fn: BackendOpenFn,
+) {
     let mut options = OpenOptions::new();
     options.create(true).read(true).write(true);
 
     let (backend, backend_name) = backend_fn(path, options.clone()).unwrap();
 
-    let id = BenchmarkId::from_parameter(format!("{access}/{chunk_size}B/{backend_name}"));
-
     g.throughput(Throughput::Bytes(chunk_size as u64));
     g.bench_with_input(
-        id,
-        &(access, chunk_size, backend), // these are passed though a [criterion::black_box]
-        |b, (access, chunk_size, backend)| {
-            let data = vec![0; *chunk_size];
+        BenchmarkId::from_parameter(backend_name),
+        // these are passed though [criterion::black_box]
+        &(operation, access, chunk_size, backend),
+        |b, (operation, access, chunk_size, backend)| {
+            let mut data = vec![0; *chunk_size];
             let mut iter = 0;
             b.iter(|| {
                 let offset = access.offset(iter, *chunk_size);
-                backend.write_all_at(&data, offset).unwrap();
+                operation.execute(backend.as_ref(), &mut data, offset, iter);
                 iter += 1;
             });
         },
     );
 }
 
-criterion_group!(name = benches;  config = Criterion::default(); targets = write_benchmarks);
+criterion_group!(name = benches;  config = Criterion::default(); targets = file_backend_benchmark_matrix);
 criterion_main!(benches);
