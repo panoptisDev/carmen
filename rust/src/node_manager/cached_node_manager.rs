@@ -202,19 +202,21 @@ where
         id: Self::Id,
     ) -> Result<RwLockReadGuard<'_, impl Deref<Target = Self::NodeType>>, Error> {
         if let Some(pos) = self.cache.get(&id) {
-            Ok(self.nodes[pos].read().unwrap())
-        } else {
-            // Get node from storage, or return `Error::NotFound` if it doesn't exist.
-            let node = self.storage.get(id)?;
-            let pos = self.insert(
-                id,
-                NodeWithMetadata {
-                    node,
-                    is_dirty: false,
-                },
-            )?;
-            Ok(self.nodes[pos].read().unwrap())
+            let guard = self.nodes[pos].read().unwrap();
+            // The node may have been deleted from the cache in the meantime, check again.
+            if self.cache.get(&id).is_some() {
+                return Ok(guard);
+            }
         }
+        let node = self.storage.get(id)?;
+        let pos = self.insert(
+            id,
+            NodeWithMetadata {
+                node,
+                is_dirty: false,
+            },
+        )?;
+        Ok(self.nodes[pos].read().unwrap())
     }
 
     fn get_write_access(
@@ -222,19 +224,21 @@ where
         id: Self::Id,
     ) -> Result<RwLockWriteGuard<'_, impl DerefMut<Target = Self::NodeType>>, Error> {
         if let Some(pos) = self.cache.get(&id) {
-            Ok(self.nodes[pos].write().unwrap())
-        } else {
-            // Get node from storage, or return `Error::NotFound` if it doesn't exist.
-            let node = self.storage.get(id)?;
-            let pos = self.insert(
-                id,
-                NodeWithMetadata {
-                    node,
-                    is_dirty: false,
-                },
-            )?;
-            Ok(self.nodes[pos].write().unwrap())
+            let guard = self.nodes[pos].write().unwrap();
+            // The node may have been deleted from the cache in the meantime, check again.
+            if self.cache.get(&id).is_some() {
+                return Ok(guard);
+            }
         }
+        let node = self.storage.get(id)?;
+        let pos = self.insert(
+            id,
+            NodeWithMetadata {
+                node,
+                is_dirty: false,
+            },
+        )?;
+        Ok(self.nodes[pos].write().unwrap())
     }
 
     fn delete(&self, id: Self::Id) -> Result<(), Error> {
