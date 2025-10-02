@@ -176,13 +176,15 @@ where
 #[cfg(test)]
 mod tests {
     use std::{
-        fs::{self, File, Permissions},
+        fs::{self, File},
         io::{Read, Seek, SeekFrom},
-        os::unix::fs::PermissionsExt,
     };
 
     use super::*;
-    use crate::storage::{Error, file::SeekFile};
+    use crate::{
+        storage::{Error, file::SeekFile},
+        utils::test_dir::{Permissions, TestDir},
+    };
 
     type TestNode = [u8; 32];
 
@@ -190,8 +192,8 @@ mod tests {
 
     #[test]
     fn open_creates_new_directory_and_files_for_non_existing_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("non_existing_dir");
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+        let path = dir.join("non_existing_dir");
         let path = path.as_path();
 
         assert!(NodeFileStorage::open(path).is_ok());
@@ -203,60 +205,59 @@ mod tests {
 
     #[test]
     fn open_creates_new_files_in_empty_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
-        assert!(NodeFileStorage::open(path).is_ok());
+        assert!(NodeFileStorage::open(&dir).is_ok());
 
-        assert!(fs::exists(path.join(NodeFileStorage::NODE_STORE_FILE)).unwrap());
-        assert!(fs::exists(path.join(NodeFileStorage::REUSE_LIST_FILE)).unwrap());
-        assert!(fs::exists(path.join(NodeFileStorage::METADATA_FILE)).unwrap());
+        assert!(fs::exists(dir.join(NodeFileStorage::NODE_STORE_FILE)).unwrap());
+        assert!(fs::exists(dir.join(NodeFileStorage::REUSE_LIST_FILE)).unwrap());
+        assert!(fs::exists(dir.join(NodeFileStorage::METADATA_FILE)).unwrap());
     }
 
     #[test]
     fn open_performs_consistency_checks_on_existing_files() {
         // files have valid sizes
         {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
             write_metadata(&dir, 1, 1);
             write_reuse_list(&dir, &[0]);
             write_nodes(&dir, &[[0; 32]]);
 
-            assert!(NodeFileStorage::open(dir.path()).is_ok());
+            assert!(NodeFileStorage::open(&dir).is_ok());
         }
         // metadata contains larger node count that node file sizes allows
         {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
             write_metadata(&dir, 2, 0);
             write_reuse_list(&dir, &[0]);
             write_nodes(&dir, &[[0; 32]]);
 
             assert!(matches!(
-                NodeFileStorage::open(dir.path()),
+                NodeFileStorage::open(&dir),
                 Err(Error::DatabaseCorruption)
             ));
         }
         // metadata contains larger frozen count that reuse list file sizes allows
         {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
             write_metadata(&dir, 0, 2);
             write_reuse_list(&dir, &[0]);
             write_nodes(&dir, &[[0; 32]]);
 
             assert!(matches!(
-                NodeFileStorage::open(dir.path()),
+                NodeFileStorage::open(&dir),
                 Err(Error::DatabaseCorruption)
             ));
         }
         // reuse list contains indices which are larger than node count in metadata
         {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
             write_metadata(&dir, 0, 0);
             write_reuse_list(&dir, &[1]);
             write_nodes(&dir, &[]);
 
             assert!(matches!(
-                NodeFileStorage::open(dir.path()),
+                NodeFileStorage::open(&dir),
                 Err(Error::DatabaseCorruption)
             ));
         }
@@ -264,25 +265,20 @@ mod tests {
 
     #[test]
     fn open_forwards_io_errors() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadOnly).unwrap();
 
-        fs::set_permissions(path, Permissions::from_mode(0o000)).unwrap();
-
-        assert!(matches!(NodeFileStorage::open(path), Err(Error::Io(_))));
-
-        fs::set_permissions(path, Permissions::from_mode(0o777)).unwrap();
+        assert!(matches!(NodeFileStorage::open(&dir), Err(Error::Io(_))));
     }
 
     #[test]
     fn get_reads_data_if_index_in_bounds() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
         write_metadata(&dir, 2, 0);
         write_reuse_list(&dir, &[]);
         write_nodes(&dir, &[[0; 32], [1; 32]]);
 
-        let storage = NodeFileStorage::open(dir.path()).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
 
         assert_eq!(storage.get(0).unwrap(), [0; 32]);
         assert_eq!(storage.get(1).unwrap(), [1; 32]);
@@ -291,13 +287,13 @@ mod tests {
 
     #[test]
     fn reserve_returns_last_index_from_reuse_list() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
         write_metadata(&dir, 3, 0);
         write_reuse_list(&dir, &[0, 2]);
         write_nodes(&dir, &[[0; 32], [1; 32], [2; 32]]);
 
-        let storage = NodeFileStorage::open(dir.path()).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
 
         assert_eq!(storage.reserve(&[0; 32]), 2); // last index in reuse list
         assert_eq!(storage.reserve(&[0; 32]), 0); // next index in reuse list
@@ -306,22 +302,21 @@ mod tests {
 
     #[test]
     fn reserve_returns_new_index_if_no_reuse_available() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
         // create a single node -> index 0 is used
         write_metadata(&dir, 1, 0);
         write_reuse_list(&dir, &[]);
         write_nodes(&dir, &[[0; 32]]);
 
-        let storage = NodeFileStorage::open(dir.path()).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
 
         assert_eq!(storage.reserve(&[0; 32]), 1);
     }
 
     #[test]
     fn set_writes_data_to_node_file_at_index() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
         // prepare file: write some nodes into the file
         write_metadata(&dir, 2, 0);
@@ -330,7 +325,7 @@ mod tests {
 
         // create storage and call set with existing and new nodes
         {
-            let storage = NodeFileStorage::open(path).unwrap();
+            let storage = NodeFileStorage::open(&dir).unwrap();
             storage.next_idx.store(5, Ordering::Relaxed);
 
             // overwrite existing node
@@ -341,7 +336,7 @@ mod tests {
             storage.set(4, &[5; 32]).unwrap();
         }
 
-        let mut node_file = File::open(path.join(NodeFileStorage::NODE_STORE_FILE)).unwrap();
+        let mut node_file = File::open(dir.join(NodeFileStorage::NODE_STORE_FILE)).unwrap();
         let mut buf = [0; size_of::<TestNode>() * 5];
         node_file.read_exact(&mut buf).unwrap();
 
@@ -363,9 +358,9 @@ mod tests {
 
     #[test]
     fn set_returns_error_if_index_out_of_bounds() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
-        let storage = NodeFileStorage::open(dir.path()).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
         assert!(matches!(
             storage.set(123, &[0; 32]).unwrap_err(),
             Error::NotFound
@@ -374,14 +369,13 @@ mod tests {
 
     #[test]
     fn delete_adds_index_to_reuse_list() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
         write_metadata(&dir, 2, 0);
         write_reuse_list(&dir, &[]);
         write_nodes(&dir, &[[0; 32], [1; 32]]);
 
-        let storage = NodeFileStorage::open(path).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
         storage.delete(0).unwrap();
         storage.delete(1).unwrap();
         let mut reuse_list_file = storage.reuse_list_file.lock().unwrap();
@@ -392,18 +386,17 @@ mod tests {
 
     #[test]
     fn delete_returns_error_if_index_out_of_bounds() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
-        let storage = NodeFileStorage::open(dir.path()).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
         assert!(matches!(storage.delete(0).unwrap_err(), Error::NotFound));
     }
 
     #[test]
     fn flush_writes_reuse_list_to_file_and_updates_frozen_count() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
 
-        let storage = NodeFileStorage::open(path).unwrap();
+        let storage = NodeFileStorage::open(&dir).unwrap();
         {
             let mut reuse_list_file = storage.reuse_list_file.lock().unwrap();
             reuse_list_file.push(0);
@@ -415,7 +408,7 @@ mod tests {
         // all current elements should be frozen
         assert!(storage.reuse_list_file.lock().unwrap().pop().is_none());
 
-        let mut reuse_file = File::open(path.join(NodeFileStorage::REUSE_LIST_FILE)).unwrap();
+        let mut reuse_file = File::open(dir.join(NodeFileStorage::REUSE_LIST_FILE)).unwrap();
         assert_eq!(
             reuse_file.metadata().unwrap().len(),
             size_of::<u64>() as u64 * 2

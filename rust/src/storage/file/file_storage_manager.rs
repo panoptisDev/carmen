@@ -135,10 +135,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::{self, Permissions},
-        os::unix::fs::PermissionsExt,
-    };
+    use std::fs;
 
     use mockall::predicate::eq;
 
@@ -146,6 +143,7 @@ mod tests {
     use crate::{
         storage::file::{NodeFileStorage, SeekFile},
         types::NodeId,
+        utils::test_dir::{Permissions, TestDir},
     };
 
     #[test]
@@ -156,9 +154,8 @@ mod tests {
             NodeFileStorage<FullLeafNode, SeekFile>,
         >;
 
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
-        let storage = FileStorageManager::open(path);
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+        let storage = FileStorageManager::open(&dir);
         assert!(storage.is_ok());
         let sub_dirs = [
             FileStorageManager::INNER_NODE_DIR,
@@ -171,9 +168,9 @@ mod tests {
             NodeFileStorage::<InnerNode, SeekFile>::METADATA_FILE,
         ];
         for sub_dir in &sub_dirs {
-            assert!(fs::exists(path.join(sub_dir)).unwrap());
+            assert!(fs::exists(dir.join(sub_dir)).unwrap());
             for file in &files {
-                assert!(fs::exists(path.join(sub_dir).join(file)).unwrap());
+                assert!(fs::exists(dir.join(sub_dir).join(file)).unwrap());
             }
         }
     }
@@ -186,20 +183,19 @@ mod tests {
             NodeFileStorage<FullLeafNode, SeekFile>,
         >;
 
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path();
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
         let sub_dirs = [
             FileStorageManager::INNER_NODE_DIR,
             FileStorageManager::LEAF_NODE_2_DIR,
             FileStorageManager::LEAF_NODE_256_DIR,
         ];
         for sub_dir in &sub_dirs {
-            fs::create_dir_all(path.join(sub_dir)).unwrap();
+            fs::create_dir_all(dir.join(sub_dir)).unwrap();
             // because we are not writing any nodes, the node type does not matter
-            NodeFileStorage::<InnerNode, SeekFile>::create_files_for_nodes(path, &[]).unwrap();
+            NodeFileStorage::<InnerNode, SeekFile>::create_files_for_nodes(&dir, &[]).unwrap();
         }
 
-        let storage = FileStorageManager::open(path);
+        let storage = FileStorageManager::open(&dir);
         assert!(storage.is_ok());
     }
 
@@ -211,18 +207,11 @@ mod tests {
             MockStorage<FullLeafNode>,
         >;
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::try_new(Permissions::ReadOnly).unwrap();
 
-        fs::set_permissions(&dir, Permissions::from_mode(0o000)).unwrap();
+        let path = dir.join("non_existent_dir");
 
-        let path = dir.path().join("non_existent_dir");
-
-        assert!(matches!(
-            FileStorageManager::open(path.as_path()),
-            Err(Error::Io(_))
-        ));
-
-        fs::set_permissions(&dir, Permissions::from_mode(0o777)).unwrap();
+        assert!(matches!(FileStorageManager::open(&path), Err(Error::Io(_))));
     }
 
     #[test]
@@ -503,17 +492,17 @@ mod tests {
             type Id = u64;
             type Item = T;
 
-            fn open(_path: &Path) -> Result<Self, Error>
+            fn open(path: &Path) -> Result<Self, Error>
             where
                 Self: Sized;
 
-            fn get(&self, _id: <Self as Storage>::Id) -> Result<<Self as Storage>::Item, Error>;
+            fn get(&self, id: <Self as Storage>::Id) -> Result<<Self as Storage>::Item, Error>;
 
-            fn reserve(&self, _item: &<Self as Storage>::Item) -> <Self as Storage>::Id;
+            fn reserve(&self, item: &<Self as Storage>::Item) -> <Self as Storage>::Id;
 
-            fn set(&self, _id: <Self as Storage>::Id, _item: &<Self as Storage>::Item) -> Result<(), Error>;
+            fn set(&self, id: <Self as Storage>::Id, item: &<Self as Storage>::Item) -> Result<(), Error>;
 
-            fn delete(&self, _id: <Self as Storage>::Id) -> Result<(), Error>;
+            fn delete(&self, id: <Self as Storage>::Id) -> Result<(), Error>;
 
             fn flush(&self) -> Result<(), Error>;
         }
