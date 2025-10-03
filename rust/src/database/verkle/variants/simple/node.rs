@@ -8,12 +8,12 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-#[cfg(test)]
-use crate::{database::verkle::compute_commitment::compute_leaf_node_commitment, types::Key};
-use crate::{database::verkle::crypto::Commitment, types::Value};
+use crate::{
+    database::verkle::{compute_commitment::compute_leaf_node_commitment, crypto::Commitment},
+    types::{Key, Value},
+};
 
 /// A node in the simple in-memory Verkle trie.
-#[cfg_attr(not(test), expect(unused))]
 #[derive(Debug)]
 pub enum Node {
     Empty,
@@ -21,7 +21,6 @@ pub enum Node {
     Leaf(LeafNode),
 }
 
-#[cfg(test)]
 impl Node {
     /// Returns the value associated with the given key, or the default value if
     /// the key does not exist.
@@ -84,7 +83,6 @@ impl Node {
 }
 
 /// An inner node in the simple in-memory Verkle trie, containing up to 256 children.
-#[cfg_attr(not(test), expect(unused))]
 #[derive(Debug)]
 pub struct InnerNode {
     children: Box<[Node; 256]>,
@@ -92,7 +90,6 @@ pub struct InnerNode {
     commitment_dirty: bool,
 }
 
-#[cfg(test)]
 impl InnerNode {
     /// Creates a new inner node without any children.
     fn new() -> Self {
@@ -166,7 +163,6 @@ impl InnerNode {
 ///   that share a common prefix, as well as for non-existence proofs.
 /// - A bitmap indicating which of the 256 values have been modified at some point, required for
 ///   future state expiry schemes.
-#[cfg_attr(not(test), expect(unused))]
 #[derive(Debug)]
 pub struct LeafNode {
     stem: [u8; 31],
@@ -176,9 +172,8 @@ pub struct LeafNode {
     commitment_dirty: bool,
 }
 
-#[cfg(test)]
 impl LeafNode {
-    /// Creates a new leaf node for the given key, initializing all values to [`Value::default`].
+    /// Creates a new leaf node for the given key, initializing all values to the default [Value].
     pub fn new(key: &Key) -> Self {
         let values = Box::new([Value::default(); 256]);
         LeafNode {
@@ -190,7 +185,7 @@ impl LeafNode {
         }
     }
 
-    /// Returns the value associated with the given key, or [`Value::default`] if the key does
+    /// Returns the value associated with the given key, or the default [Value] if the key does
     /// not match the stem of this leaf.
     pub fn get(&self, key: &Key) -> Value {
         if key[..31] != self.stem {

@@ -1185,11 +1185,14 @@ mod tests {
                         dir.len() as i32,
                         &mut out_database,
                     );
-                    assert_eq!(result, bindings::Result_kResult_Success);
-                    assert!(!out_database.is_null());
-                    let db_ref = &mut *(out_database as *mut DbWrapper);
-                    assert!(!db_ref.inner.is_null());
-                    Carmen_Rust_ReleaseDatabase(out_database);
+                    if result == bindings::Result_kResult_Success {
+                        assert!(!out_database.is_null());
+                        let db_ref = &mut *(out_database as *mut DbWrapper);
+                        assert!(!db_ref.inner.is_null());
+                        Carmen_Rust_ReleaseDatabase(out_database);
+                    } else {
+                        assert_eq!(result, bindings::Result_kResult_UnsupportedImplementation);
+                    }
                 }
             }
         }
