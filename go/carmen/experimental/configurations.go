@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -11,11 +11,11 @@
 package experimental
 
 import (
-	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/carmen"
+	"github.com/panoptisDev/carmen/go/state"
 
-	_ "github.com/0xsoniclabs/carmen/go/state/cppstate"
-	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
+	_ "github.com/panoptisDev/carmen/go/state/cppstate"
+	_ "github.com/panoptisDev/carmen/go/state/gostate"
 )
 
 // GetDatabaseConfigurations returns a list of experimental database configurations

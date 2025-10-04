@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -12,10 +12,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/0xsoniclabs/carmen/go/common/interrupt"
-	"github.com/0xsoniclabs/carmen/go/database/mpt"
-	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
-	"github.com/0xsoniclabs/carmen/go/database/mpt/proof"
+	"github.com/panoptisDev/carmen/go/common/interrupt"
+	"github.com/panoptisDev/carmen/go/database/mpt"
+	"github.com/panoptisDev/carmen/go/database/mpt/io"
+	"github.com/panoptisDev/carmen/go/database/mpt/proof"
 	"github.com/urfave/cli/v2"
 	"log"
 	"math"

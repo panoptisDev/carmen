@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -15,12 +15,12 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"github.com/0xsoniclabs/carmen/go/backend/depot"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree/htmemory"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend/depot"
+	"github.com/panoptisDev/carmen/go/backend/hashtree/htmemory"
+	"github.com/panoptisDev/carmen/go/common"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/backend"
 )
 
 func TestDepotProof_IsProof(t *testing.T) {

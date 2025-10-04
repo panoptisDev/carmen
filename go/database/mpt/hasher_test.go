@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/database/mpt/shared"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -294,7 +294,7 @@ func TestEthereumLikeHasher_ExtensionNode_KnownHash(t *testing.T) {
 	ctxt := newNodeContext(t, ctrl)
 
 	// This test case reconstructs an issue encountered while hashing the
-	// state tree of block 25399 of the Fantom main-net.
+	// state tree of block 25399 of the panoptisDev main-net.
 
 	hasher := makeEthereumLikeHasher()
 	ref, node := ctxt.Build(&Extension{
@@ -336,7 +336,7 @@ func TestEthereumLikeHasher_BranchNode_KnownHash_EmbeddedNode(t *testing.T) {
 	})
 
 	// This test case reconstructs an issue encountered while hashing the
-	// state tree of block 652606 of the Fantom main-net.
+	// state tree of block 652606 of the panoptisDev main-net.
 
 	v31 := common.Value{}
 	v31[len(v31)-1] = 31

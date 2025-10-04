@@ -16,7 +16,7 @@ headers = {
     'Content-Type': 'application/xml'
 }
 
-response = requests.get('https://team.fantom.network/app/rest/builds/?locator=buildType:Aida_RunVmComparison&fields=build(id,number,status,running,startDate,comment,artifacts(file(name,content)))', headers=headers)
+response = requests.get('https://team.pano.network/app/rest/builds/?locator=buildType:Aida_RunVmComparison&fields=build(id,number,status,running,startDate,comment,artifacts(file(name,content)))', headers=headers)
 
 if response.status_code != 200:
 	print(response.content)
@@ -39,7 +39,7 @@ for i, build in enumerate(dict_data['builds']['build']):
 		if os.path.exists('data/' + name):
 			continue
 
-		response = requests.get('https://team.fantom.network' + artifact['content']['@href'], headers=headers)
+		response = requests.get('https://team.pano.network' + artifact['content']['@href'], headers=headers)
 		with open('data/' + name, 'wb') as f:
 			f.write(response.content)
 

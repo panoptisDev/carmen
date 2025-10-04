@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/database/mpt"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/database/mpt"
+	"github.com/panoptisDev/carmen/go/state"
 )
 
 func TestScheme5_Archive_And_Live_Must_Be_InSync(t *testing.T) {

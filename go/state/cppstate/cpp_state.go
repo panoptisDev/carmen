@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -29,13 +29,13 @@ import (
 	"path/filepath"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/panoptisDev/carmen/go/common/witness"
 
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/state"
 
-	"github.com/0xsoniclabs/carmen/go/backend"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 const CodeCacheSize = 8_000 // ~ 200 MiB of memory for go-side code cache
@@ -280,7 +280,7 @@ func (cs *CppState) GetArchiveBlockHeight() (uint64, bool, error) {
 }
 
 func (cs *CppState) Check() error {
-	// TODO: implement, see https://github.com/Fantom-foundation/Carmen/issues/313
+	// TODO: implement, see https://github.com/panoptisDev/Carmen/issues/313
 	return nil
 }
 

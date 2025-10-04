@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -24,12 +24,12 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/backend/stock"
-	"github.com/0xsoniclabs/carmen/go/backend/stock/file"
-	"github.com/0xsoniclabs/carmen/go/backend/stock/memory"
-	"github.com/0xsoniclabs/carmen/go/backend/stock/synced"
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
+	"github.com/panoptisDev/carmen/go/backend/stock"
+	"github.com/panoptisDev/carmen/go/backend/stock/file"
+	"github.com/panoptisDev/carmen/go/backend/stock/memory"
+	"github.com/panoptisDev/carmen/go/backend/stock/synced"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/database/mpt/shared"
 )
 
 type StorageMode bool
@@ -280,7 +280,7 @@ func makeForest(
 	// number of nodes modified in a block. Evaluations show that most blocks
 	// modify less than 2000 nodes. However, one block, presumably the one handling
 	// the opera fork at ~4.5M, modifies 434.589 nodes. Thus, the cache size of a
-	// MPT processing Fantom's history should be at least ~500.000 nodes.
+	// MPT processing panoptisDev's history should be at least ~500.000 nodes.
 	const defaultCacheCapacity = 10_000_000
 	if forestConfig.Capacity <= 0 {
 		forestConfig.Capacity = defaultCacheCapacity
@@ -1011,7 +1011,7 @@ func (s *Forest) release(ref *NodeReference) error {
 	// written/read in parallel.
 	// Furthermore, it prevents cache exhaustion when
 	// deleting many nodes in parallel.
-	// It fixes: https://github.com/Fantom-foundation/Carmen/issues/691
+	// It fixes: https://github.com/panoptisDev/Carmen/issues/691
 	// If this line is removed, this test fails:
 	//  go test ./database/mpt/...  -run TestForest_AsyncDelete_CacheIsNotExhausted
 	s.nodeCache.Release(ref)

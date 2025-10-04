@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -71,11 +71,11 @@ pipeline {
 
                 stage('Run Go tests') {
                     environment {
-                        CODECOV_TOKEN = credentials('codecov-uploader-0xsoniclabs-global')
+                        CODECOV_TOKEN = credentials('codecov-uploader-panoptisDev-global')
                     }
                     steps {
                         sh 'cd go && go test ./... -coverprofile=coverage.txt -parallel 1 -timeout 60m'
-                        sh ('codecov upload-process -r 0xsoniclabs/carmen -f ./go/coverage.txt -t ${CODECOV_TOKEN}')
+                        sh ('codecov upload-process -r panoptisDev/carmen -f ./go/coverage.txt -t ${CODECOV_TOKEN}')
                     }
                 }
 

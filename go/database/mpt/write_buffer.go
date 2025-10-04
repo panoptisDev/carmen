@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -18,7 +18,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/0xsoniclabs/carmen/go/database/mpt/shared"
+	"github.com/panoptisDev/carmen/go/database/mpt/shared"
 )
 
 // ----------------------------------------------------------------------------
@@ -124,7 +124,7 @@ func (b *writeBuffer) Add(id NodeId, node *shared.Shared[Node]) {
 	if b.counter > b.capacity && !b.emptyBufferSignalClosed {
 		// The option to ignore a full signal channel here is important
 		// to prevent a potential deadlock. See
-		// https://github.com/Fantom-foundation/Carmen/issues/724
+		// https://github.com/panoptisDev/Carmen/issues/724
 		// for more details.
 		select {
 		case b.emptyBufferSignal <- false: /* ok, a new clear-buffer operation is scheduled */

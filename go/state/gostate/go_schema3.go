@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -15,14 +15,14 @@ import (
 	"hash"
 	"io"
 
-	"github.com/0xsoniclabs/carmen/go/backend"
-	"github.com/0xsoniclabs/carmen/go/backend/depot"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree"
-	"github.com/0xsoniclabs/carmen/go/backend/index"
-	"github.com/0xsoniclabs/carmen/go/backend/store"
-	"github.com/0xsoniclabs/carmen/go/backend/store/memory"
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/backend/depot"
+	"github.com/panoptisDev/carmen/go/backend/hashtree"
+	"github.com/panoptisDev/carmen/go/backend/index"
+	"github.com/panoptisDev/carmen/go/backend/store"
+	"github.com/panoptisDev/carmen/go/backend/store/memory"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
 	"golang.org/x/crypto/sha3"
 )
 

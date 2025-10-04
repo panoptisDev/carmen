@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -17,9 +17,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/state"
-	_ "github.com/0xsoniclabs/carmen/go/state/cppstate"
-	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
+	"github.com/panoptisDev/carmen/go/state"
+	_ "github.com/panoptisDev/carmen/go/state/cppstate"
+	_ "github.com/panoptisDev/carmen/go/state/gostate"
 )
 
 func TestStateConfigs_ContainsConfigurations(t *testing.T) {

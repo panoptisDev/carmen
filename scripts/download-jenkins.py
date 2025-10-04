@@ -18,7 +18,7 @@ headers = {
     'Content-Type': 'application/xml'
 }
 
-jenkins = 'https://xapi194.fantom.network'
+jenkins = 'https://xapi194.pano.network'
 jobs = [
     'CompareMainnet8M',
     'CompareMainnet44M',

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -13,13 +13,13 @@ package memory
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/0xsoniclabs/carmen/go/backend"
-	"github.com/0xsoniclabs/carmen/go/backend/depot"
-	"github.com/0xsoniclabs/carmen/go/backend/memsnap"
+	"github.com/panoptisDev/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/backend/depot"
+	"github.com/panoptisDev/carmen/go/backend/memsnap"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend/hashtree"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 const LengthSize = 4 // uint32

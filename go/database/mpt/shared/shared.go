@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisDev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -278,8 +278,8 @@ func (h *WriteHandle[T]) Set(value T) {
 // shared value. Write access is preserved and must still be released. The
 // resulting read access handle must not be released.
 // TODO [cleanup]: split access permission proofs and handles
-// see: https://github.com/Fantom-foundation/Carmen/issues/719
-// See https://github.com/Fantom-foundation/Carmen/issues/719
+// see: https://github.com/panoptisDev/Carmen/issues/719
+// See https://github.com/panoptisDev/Carmen/issues/719
 func (h *WriteHandle[T]) AsReadHandle() ReadHandle[T] {
 	return ReadHandle[T]{h.handle}
 }
@@ -288,8 +288,8 @@ func (h *WriteHandle[T]) AsReadHandle() ReadHandle[T] {
 // shared value. Write access is preserved and must still be released. The
 // resulting view access handle must not be released.
 // TODO [cleanup]: split access permission proofs and handles
-// see: https://github.com/Fantom-foundation/Carmen/issues/719
-// See https://github.com/Fantom-foundation/Carmen/issues/719
+// see: https://github.com/panoptisDev/Carmen/issues/719
+// See https://github.com/panoptisDev/Carmen/issues/719
 func (h *WriteHandle[T]) AsViewHandle() ViewHandle[T] {
 	return ViewHandle[T]{h.handle}
 }
