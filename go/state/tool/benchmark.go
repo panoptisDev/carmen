@@ -26,13 +26,13 @@ import (
 	"github.com/0xsoniclabs/carmen/go/state"
 	"github.com/urfave/cli/v2"
 
-	"github.com/0xsoniclabs/carmen/go/state/gostate"
+	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
 )
 
 var Benchmark = cli.Command{
 	Action: diagnostics.AddPerformanceDiagnosticsAction(benchmark, &diagnosticsFlag, &cpuProfileFlag, &traceFlag),
 	Name:   "benchmark",
-	Usage:  "benchmarks MPT performance by filling data into a fresh instance",
+	Usage:  "benchmarks State performance by filling data into a fresh instance",
 	Flags: []cli.Flag{
 		&archiveFlag,
 		&numBlocksFlag,
@@ -44,6 +44,7 @@ var Benchmark = cli.Command{
 		&cpuProfileFlag,
 		&schemaFlag,
 		&diagnosticsFlag,
+		&variantFlag,
 	},
 }
 
@@ -85,6 +86,11 @@ var (
 		Usage: "database scheme to use represented by its number [1..N]",
 		Value: 5,
 	}
+	variantFlag = cli.StringFlag{
+		Name:  "variant",
+		Usage: "database variant",
+		Value: "go-file",
+	}
 )
 
 func benchmark(context *cli.Context) error {
@@ -105,6 +111,7 @@ func benchmark(context *cli.Context) error {
 			keepState:          context.Bool(keepStateFlag.Name),
 			reportInterval:     context.Int(reportIntervalFlag.Name),
 			schema:             context.Int(schemaFlag.Name),
+			variant:            context.String(variantFlag.Name),
 		},
 		func(msg string, args ...any) {
 			delta := uint64(time.Since(start).Round(time.Second).Seconds())
@@ -134,6 +141,7 @@ type benchmarkParams struct {
 	keepState          bool
 	reportInterval     int
 	schema             int
+	variant            string
 }
 
 type benchmarkRecord struct {
@@ -157,8 +165,6 @@ func runBenchmark(
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	res := benchmarkResult{}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -178,7 +184,7 @@ func runBenchmark(
 		observer("Creating state without archive in %s ..", path)
 	}
 	if err := os.Mkdir(path, 0700); err != nil {
-		return res, fmt.Errorf("failed to create temporary state directory: %v", err)
+		return benchmarkResult{}, fmt.Errorf("failed to create temporary state directory: %v", err)
 	}
 	if params.keepState {
 		observer("state in %s will not be removed at the end of the run", path)
@@ -199,12 +205,12 @@ func runBenchmark(
 	}
 	state, err := state.NewState(state.Parameters{
 		Directory: path,
-		Variant:   gostate.VariantGoFile,
+		Variant:   state.Variant(params.variant),
 		Schema:    state.Schema(params.schema),
 		Archive:   archive,
 	})
 	if err != nil {
-		return res, err
+		return benchmarkResult{}, err
 	}
 	defer func() {
 		start := time.Now()
@@ -215,6 +221,16 @@ func runBenchmark(
 		observer("Final disk usage: %d", getDirectorySize(path))
 	}()
 
+	return runBenchmarkState(state, path, params, observer)
+}
+
+func runBenchmarkState(
+	state state.State,
+	path string,
+	params benchmarkParams,
+	observer func(string, ...any)) (benchmarkResult, error) {
+
+	res := benchmarkResult{}
 	// Progress tracking.
 	reportingInterval := params.reportInterval
 	lastReportTime := time.Now()
@@ -237,7 +253,9 @@ func runBenchmark(
 	for i := 0; i < numBlocks; i++ {
 		for j := 0; j < numReadsPerBlock; j++ {
 			addr := common.Address{byte(counter), byte(counter >> 8), byte(counter >> 16), byte(counter >> 24), byte(counter >> 32)}
-			state.GetBalance(addr)
+			if _, err := state.GetBalance(addr); err != nil {
+				return res, fmt.Errorf("error reading balance for account %x at block %d: %v", addr, i, err)
+			}
 			counter++
 		}
 		update := common.Update{}
@@ -250,6 +268,10 @@ func runBenchmark(
 		}
 		if err := state.Apply(uint64(i), update); err != nil {
 			return res, fmt.Errorf("error applying block %d: %v", i, err)
+		}
+		// make sure hash/commit is computed
+		if _, err := state.GetHash(); err != nil {
+			return res, fmt.Errorf("error getting hash after applying block %d: %v", i, err)
 		}
 
 		if (i+1)%reportingInterval == 0 {
