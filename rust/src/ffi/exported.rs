@@ -1307,9 +1307,9 @@ mod tests {
     fn carmen_rust_flush_returns_error_as_int() {
         create_db_then_call_fn_then_release_db(
             |mock_db| {
-                mock_db
-                    .expect_checkpoint()
-                    .returning(|| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_checkpoint().returning(|| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             |db| unsafe {
                 let result = Carmen_Rust_Flush(db);
@@ -1340,9 +1340,9 @@ mod tests {
     fn carmen_rust_close_returns_error_as_int() {
         create_db_then_call_fn_then_release_db(
             |mock_db| {
-                mock_db
-                    .expect_close()
-                    .returning(|| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_close().returning(|| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             |db| unsafe {
                 let result = Carmen_Rust_Close(db);
@@ -1391,9 +1391,9 @@ mod tests {
     fn carmen_rust_get_live_state_returns_error_as_int() {
         create_db_then_call_fn_then_release_db(
             |mock_db| {
-                mock_db
-                    .expect_get_live_state()
-                    .returning(|| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_live_state().returning(|| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             |db| {
                 let mut out_state = std::ptr::null_mut();
@@ -1451,7 +1451,9 @@ mod tests {
                 mock_db
                     .expect_get_archive_state()
                     .with(eq(block))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |db| {
                 let mut out_state = std::ptr::null_mut();
@@ -1533,7 +1535,9 @@ mod tests {
                 mock_db
                     .expect_account_exists()
                     .with(eq(addr))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |state| {
                 let mut addr = addr;
@@ -1613,10 +1617,9 @@ mod tests {
         let addr = [1; 20];
         create_state_then_call_fn_then_release_state(
             move |mock_db| {
-                mock_db
-                    .expect_get_balance()
-                    .with(eq(addr))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_balance().with(eq(addr)).returning(|_| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             move |state| {
                 let mut addr = addr;
@@ -1696,10 +1699,9 @@ mod tests {
         let addr = [1u8; 20];
         create_state_then_call_fn_then_release_state(
             move |mock_db| {
-                mock_db
-                    .expect_get_nonce()
-                    .with(eq(addr))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_nonce().with(eq(addr)).returning(|_| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             move |state| {
                 let mut addr = addr;
@@ -1800,7 +1802,9 @@ mod tests {
                 mock_db
                     .expect_get_storage_value()
                     .with(eq(addr), eq(key))
-                    .returning(|_, _| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_, _| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |state| {
                 let mut addr = addr;
@@ -1909,7 +1913,9 @@ mod tests {
                 mock_db
                     .expect_get_code()
                     .with(eq(addr), always())
-                    .returning(|_, _| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_, _| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |state| {
                 let mut addr = addr;
@@ -1994,7 +2000,9 @@ mod tests {
                 mock_db
                     .expect_get_code_hash()
                     .with(eq(addr))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |state| {
                 let mut addr = addr;
@@ -2074,10 +2082,9 @@ mod tests {
         let addr = [1; 20];
         create_state_then_call_fn_then_release_state(
             move |mock_db| {
-                mock_db
-                    .expect_get_code_len()
-                    .with(eq(addr))
-                    .returning(|_| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_code_len().with(eq(addr)).returning(|_| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             move |state| {
                 let mut addr = addr;
@@ -2179,7 +2186,9 @@ mod tests {
                 mock_db
                     .expect_apply_block_update()
                     .with(eq(block), always())
-                    .returning(|_, _| Err(crate::Error::UnsupportedOperation("some error".into())));
+                    .returning(|_, _| {
+                        Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                    });
             },
             move |state| {
                 let mut update_data = update_data;
@@ -2239,9 +2248,9 @@ mod tests {
     fn carmen_rust_get_hash_returns_error_as_int() {
         create_state_then_call_fn_then_release_state(
             move |mock_db| {
-                mock_db
-                    .expect_get_hash()
-                    .returning(|| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_hash().returning(|| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             move |state| {
                 let mut out_hash = [0u8; 32];
@@ -2314,9 +2323,9 @@ mod tests {
     fn carmen_rust_get_memory_footprint_returns_error_as_int() {
         create_db_then_call_fn_then_release_db(
             move |mock_db| {
-                mock_db
-                    .expect_get_memory_footprint()
-                    .returning(|| Err(crate::Error::UnsupportedOperation("some error".into())));
+                mock_db.expect_get_memory_footprint().returning(|| {
+                    Err(crate::Error::UnsupportedOperation("some error".into()).into())
+                });
             },
             |db| {
                 let mut out_ptr: *mut c_char = std::ptr::null_mut();
