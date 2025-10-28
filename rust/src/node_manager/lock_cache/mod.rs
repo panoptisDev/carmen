@@ -8,7 +8,11 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
+use std::{
+    hint,
+    num::NonZero,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError},
+};
 
 use dashmap::DashSet;
 use quick_cache::{
@@ -17,6 +21,8 @@ use quick_cache::{
 };
 
 use crate::error::Error;
+
+mod test_utils;
 
 /// A trait for handling eviction events in the cache.
 pub trait EvictionHooks: Send + Sync {
@@ -67,6 +73,20 @@ where
     ///
     /// The actual capacity might differ slightly due to rounding performed by quick-cache.
     pub fn new(capacity: usize, hooks: Arc<dyn EvictionHooks<Key = K, Value = V>>) -> Self {
+        // We allocate a couple of additional slots, roughly one for each concurrent thread.
+        // This way, when the cache is full, we always have a free slot we can use to insert a new
+        // item into the cache and force the eviction of an old one.
+        let extra_slots = std::thread::available_parallelism().unwrap_or(NonZero::new(1).unwrap());
+        Self::new_internal(capacity, extra_slots, hooks)
+    }
+
+    /// Internal constructor that allows to specify the number of `extra_slots` directly.
+    /// This is required for testing.
+    fn new_internal(
+        capacity: usize,
+        extra_slots: NonZero<usize>,
+        hooks: Arc<dyn EvictionHooks<Key = K, Value = V>>,
+    ) -> Self {
         let options = quick_cache::OptionsBuilder::new()
             .estimated_items_capacity(capacity)
             .weight_capacity(capacity as u64) // unit weight per value
@@ -84,13 +104,7 @@ where
             tmp_cache.capacity() as usize
         };
 
-        // We allocate a couple of additional slots, roughly one for each concurrent thread.
-        // This way, when the cache is full, we always have a free slot we can use to insert a new
-        // item into the cache and force the eviction of an old one.
-        let extra_slots = std::thread::available_parallelism()
-            .map(std::num::NonZero::get)
-            .unwrap_or(1);
-        let num_slots = true_capacity + extra_slots;
+        let num_slots = true_capacity + extra_slots.get();
         let locks: Arc<[_]> = (0..num_slots).map(|_| RwLock::default()).collect();
         let free_slots = Arc::new(DashSet::from_iter(0..num_slots));
 
@@ -215,7 +229,7 @@ where
                     {
                         break slot;
                     }
-                    std::hint::spin_loop();
+                    hint::spin_loop();
                 };
                 let mut slot_guard = self.locks[slot].write().unwrap();
                 *slot_guard = value;
@@ -301,30 +315,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage;
-
-    #[derive(Default)]
-    struct EvictionLogger {
-        evicted: DashSet<(u32, i32)>,
-    }
-
-    impl EvictionHooks for EvictionLogger {
-        type Key = u32;
-        type Value = i32;
-
-        fn on_evict(&self, key: u32, value: i32) -> Result<(), Error> {
-            self.evicted.insert((key, value));
-            Ok(())
-        }
-    }
+    use crate::{
+        node_manager::lock_cache::test_utils::{
+            EvictionLogger, GetOrInsertMethod, get_method, ignore_guard,
+        },
+        storage,
+    };
 
     fn not_found() -> Result<i32, Error> {
         Err(Error::Storage(storage::Error::NotFound))
-    }
-
-    /// Helper function for performing a get/insert where we don't care about the returned guard.
-    fn ignore_guard<T>(result: Result<T, Error>) {
-        let _guard = result.unwrap();
     }
 
     #[test]
@@ -349,21 +348,22 @@ mod tests {
     fn items_can_be_inserted_and_removed(
         #[case] get_fn: GetOrInsertMethod<fn() -> Result<i32, Error>>,
     ) {
+        type InsertFn = fn() -> Result<i32, Error>;
         let logger = Arc::new(EvictionLogger::default());
         let cache = LockCache::<u32, i32>::new(10, logger.clone());
 
-        ignore_guard(get_fn(&cache, 1u32, || Ok(123)));
-        ignore_guard(get_fn(&cache, 2u32, || Ok(456)));
-        ignore_guard(get_fn(&cache, 3u32, || Ok(789)));
+        ignore_guard(get_fn(&cache, 1u32, &((|| Ok(123)) as InsertFn)));
+        ignore_guard(get_fn(&cache, 2u32, &((|| Ok(456)) as InsertFn)));
+        ignore_guard(get_fn(&cache, 3u32, &((|| Ok(789)) as InsertFn)));
 
         {
-            assert_eq!(get_fn(&cache, 1u32, not_found).unwrap(), 123);
-            assert_eq!(get_fn(&cache, 2u32, not_found).unwrap(), 456);
-            assert_eq!(get_fn(&cache, 3u32, not_found).unwrap(), 789);
+            assert_eq!(get_fn(&cache, 1u32, &(not_found as InsertFn)).unwrap(), 123);
+            assert_eq!(get_fn(&cache, 2u32, &(not_found as InsertFn)).unwrap(), 456);
+            assert_eq!(get_fn(&cache, 3u32, &(not_found as InsertFn)).unwrap(), 789);
         }
 
         cache.remove(2u32).unwrap();
-        let res = get_fn(&cache, 2u32, not_found);
+        let res = get_fn(&cache, 2u32, &(not_found as InsertFn));
         assert!(matches!(res, Err(Error::Storage(storage::Error::NotFound))));
 
         cache.remove(9999u32).unwrap(); // Removing non-existing key is a no-op
@@ -578,22 +578,4 @@ mod tests {
         };
         lifecycle.on_evict(&mut (), 42, Arc::new(0usize));
     }
-
-    /// Type alias for a closure that calls either `get_read_access_or_insert` or
-    /// `get_write_access_or_insert`
-    type GetOrInsertMethod<F> = fn(&LockCache<u32, i32>, u32, F) -> Result<i32, Error>;
-
-    /// Reusable rstest template to test both `get_read_access_or_insert` and
-    /// `get_write_access_or_insert`
-    #[rstest_reuse::template]
-    #[rstest::rstest]
-    #[case::get_read_access((|cache, id, insert_fn| {
-        let guard = cache.get_read_access_or_insert(id, insert_fn)?;
-        Ok(*guard)
-    }) as GetOrInsertMethod<_>)]
-    #[case::get_write_access((|cache, id, insert_fn| {
-        let guard = cache.get_write_access_or_insert(id, insert_fn)?;
-        Ok(*guard)
-    }) as GetOrInsertMethod<_>)]
-    fn get_method(#[case] f: GetOrInsertMethod) {}
 }
