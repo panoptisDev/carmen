@@ -10,6 +10,7 @@
 
 mod managed_trie_node;
 mod trie_commitment;
+mod trie_update_log;
 
 #[expect(unused)]
 pub use managed_trie_node::ManagedTrieNode;
