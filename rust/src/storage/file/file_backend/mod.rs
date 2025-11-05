@@ -60,15 +60,15 @@ mod tests {
         fs::{File, OpenOptions},
         io::{Read, Seek, SeekFrom, Write},
         os::unix::fs::FileExt,
-        sync::{
-            Arc, Barrier,
-            atomic::{AtomicU64, Ordering},
-        },
     };
 
     use super::*;
     use crate::{
         storage::file::{PageCachedFile, file_backend::page_utils::Page},
+        sync::{
+            Arc, Barrier,
+            atomic::{AtomicU64, Ordering},
+        },
         utils::test_dir::{Permissions, TestDir},
     };
 
