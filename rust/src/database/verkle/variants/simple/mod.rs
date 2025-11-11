@@ -31,6 +31,7 @@ pub struct SimpleInMemoryVerkleTrie {
 }
 
 impl SimpleInMemoryVerkleTrie {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         SimpleInMemoryVerkleTrie {
             root: Mutex::new(Node::Empty),

@@ -36,6 +36,7 @@ pub struct VerkleTrieCarmenState<T: VerkleTrie> {
 }
 
 impl VerkleTrieCarmenState<SimpleInMemoryVerkleTrie> {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let trie = SimpleInMemoryVerkleTrie::new();
         Self { trie }

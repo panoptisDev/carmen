@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub mod cached_node_manager;
-mod lock_cache;
+pub mod lock_cache;
 
 /// A collection of thread-safe *nodes* that dereference to [`NodeManager::NodeType`].
 ///
