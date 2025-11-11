@@ -12,6 +12,7 @@ use std::{
     cmp::Eq,
     hash::Hash,
     ops::{Deref, DerefMut},
+    path::Path,
 };
 
 use crate::{
@@ -195,15 +196,18 @@ where
     S::Id: Eq + Hash + Copy + Send + Sync,
     S::Item: Default + Clone + Send + Sync,
 {
-    fn checkpoint(&self) -> BTResult<(), crate::storage::Error> {
+    fn checkpoint(&self) -> BTResult<u64, crate::storage::Error> {
         for (id, mut guard) in self.nodes.iter_write() {
             if guard.is_dirty {
                 self.storage.storage.set(id, &guard.node)?;
                 guard.is_dirty = false;
             }
         }
-        self.storage.storage.checkpoint()?;
-        Ok(())
+        self.storage.storage.checkpoint()
+    }
+
+    fn restore(path: &Path, checkpoint: u64) -> BTResult<(), crate::storage::Error> {
+        S::restore(path, checkpoint)
     }
 }
 
@@ -348,13 +352,28 @@ mod tests {
                 .with(eq(i), eq(node))
                 .returning(move |_, _| Ok(()));
         }
-        storage.expect_checkpoint().times(1).returning(|| Ok(()));
+        storage.expect_checkpoint().times(1).returning(|| Ok(1));
 
         let manager = CachedNodeManager::new(NUM_NODES as usize, storage, pin_nothing);
         for i in 0..NUM_NODES {
             cache_insert(&manager, i, 123, true);
         }
         manager.checkpoint().expect("checkpoint should succeed");
+    }
+
+    #[test]
+    fn cached_node_manager_restore_calls_restore_on_underlying_storage() {
+        let ctx = MockCachedNodeManagerStorage::restore_context();
+        ctx.expect()
+            .with(eq(Path::new("/path_of_restore_test")), eq(1))
+            .returning(|_, _| Ok(()))
+            .times(1);
+
+        CachedNodeManager::<MockCachedNodeManagerStorage>::restore(
+            Path::new("/path_of_restore_test"),
+            1,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -489,7 +508,9 @@ mod tests {
         pub CachedNodeManagerStorage {}
 
         impl Checkpointable for CachedNodeManagerStorage {
-            fn checkpoint(&self) -> BTResult<(), storage::Error>;
+            fn checkpoint(&self) -> BTResult<u64, storage::Error>;
+
+            fn restore(path: &Path, checkpoint: u64) -> BTResult<(), storage::Error>;
         }
 
         impl Storage for CachedNodeManagerStorage {

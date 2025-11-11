@@ -214,7 +214,7 @@ impl<$STORAGE_GENERICS> $crate::storage::Checkpointable for $MANAGER_TYPE<$STORA
 where
     $STORAGE_GENERICS_BOUNDS
 {
-    fn checkpoint(&self) -> $crate::error::BTResult<(), $crate::storage::Error> {
+    fn checkpoint(&self) -> $crate::error::BTResult<u64, $crate::storage::Error> {
         let current_checkpoint = self.checkpoint.load($crate::sync::atomic::Ordering::Acquire);
         let new_checkpoint = current_checkpoint + 1;
         let participants = [
@@ -247,6 +247,30 @@ where
             participant.commit(new_checkpoint)?;
         }
         self.checkpoint.store(new_checkpoint, $crate::sync::atomic::Ordering::Release);
+
+        Ok(new_checkpoint)
+    }
+
+    fn restore(dir: &::std::path::Path, checkpoint: u64) -> $crate::error::BTResult<(), $crate::storage::Error> {
+        let committed_metadata = <$crate::storage::file::file_storage_manager::metadata::Metadata as $crate::storage::file::FromToFile>::read_or_init(
+            dir.join(Self::COMMITTED_METADATA_FILE)
+        )?;
+        if checkpoint != committed_metadata.checkpoint_number {
+            return Err($crate::storage::Error::Checkpoint.into());
+        }
+        $(
+            ${if not(approx_equal($vname, Empty)) {
+                ${paste ${upper_camel_case $vname} Storage}::restore(dir.join(Self::${paste ${shouty_snake_case $vname} _DIR}).as_path(), checkpoint)?;
+            }}
+        )
+        <$crate::storage::file::file_storage_manager::metadata::Metadata as $crate::storage::file::FromToFile>::write(
+            &committed_metadata,
+            dir.join(Self::METADATA_FILE)
+        )?;
+        let dirty_file_path = dir.join(Self::DB_DIRTY_FILE);
+        if ::std::fs::exists(&dirty_file_path)? {
+            ::std::fs::remove_file(&dirty_file_path)?;
+        }
         Ok(())
     }
 }
@@ -273,7 +297,10 @@ pub use tests::{TestNode, TestNodeFileStorageManager, TestNodeId, TestNodeType};
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, File};
+    use std::{
+        fs::{self, File},
+        path::Path,
+    };
 
     use derive_deftly::Deftly;
     use mockall::{Sequence, predicate::eq};
@@ -774,6 +801,175 @@ mod tests {
         assert_eq!(storage.checkpoint.load(Ordering::Acquire), old_checkpoint);
     }
 
+    #[test]
+    fn restore_calls_restore_on_all_storages_and_overwrites_metadata_with_committed_metadata_and_removes_db_dirty_file()
+     {
+        type FileStorageManager = TestNodeFileStorageManager<
+            MockStorage<NonEmpty1TestNode>,
+            MockStorage<NonEmpty2TestNode>,
+        >;
+
+        let dir = TestDir::try_new(Permissions::ReadWrite)
+            .unwrap()
+            .join("restore_test");
+        fs::create_dir_all(&dir).unwrap();
+
+        let ctx = MockStorage::<NonEmpty1TestNode>::restore_context();
+        ctx.expect()
+            .withf(|path: &Path, checkpoint| {
+                path.to_str().unwrap().contains("restore_test") && *checkpoint == 1
+            })
+            .returning(|_, _| Ok(()))
+            .times(1);
+        let ctx = MockStorage::<NonEmpty2TestNode>::restore_context();
+        ctx.expect()
+            .withf(|path: &Path, checkpoint| {
+                path.to_str().unwrap().contains("restore_test") && *checkpoint == 1
+            })
+            .returning(|_, _| Ok(()))
+            .times(1);
+
+        File::create(dir.join(FileStorageManager::DB_DIRTY_FILE)).unwrap();
+
+        let checkpoint_number = 1;
+        let metadata = Metadata {
+            checkpoint_number,
+            root_id_count: 0,
+        };
+        metadata
+            .write(dir.join(FileStorageManager::COMMITTED_METADATA_FILE))
+            .unwrap();
+
+        FileStorageManager::restore(&dir, checkpoint_number).unwrap();
+
+        assert_eq!(
+            fs::read(dir.join(FileStorageManager::METADATA_FILE)).unwrap(),
+            metadata.as_bytes()
+        );
+
+        assert!(!fs::exists(dir.join(FileStorageManager::DB_DIRTY_FILE)).unwrap());
+    }
+
+    #[test]
+    fn restore_fails_if_checkpoint_does_not_match_committed_checkpoint() {
+        type FileStorageManager = TestNodeFileStorageManager<
+            MockStorage<NonEmpty1TestNode>,
+            MockStorage<NonEmpty2TestNode>,
+        >;
+
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+
+        let committed_metadata = Metadata {
+            checkpoint_number: 1,
+            root_id_count: 0,
+        };
+        committed_metadata
+            .write(dir.join(FileStorageManager::COMMITTED_METADATA_FILE))
+            .unwrap();
+
+        assert!(matches!(
+            FileStorageManager::restore(&dir, 0).map_err(BTError::into_inner),
+            Err(Error::Checkpoint)
+        ));
+        assert!(matches!(
+            FileStorageManager::restore(&dir, 2).map_err(BTError::into_inner),
+            Err(Error::Checkpoint)
+        ));
+    }
+
+    #[test]
+    fn open_modify_checkpoint_modify_close_open_close_restore__works_as_expected() {
+        // This is an integration-style test that checks that the interactions between open,
+        // checkpoint, close and restore work as expected.
+
+        type FileStorageManager = TestNodeFileStorageManager<
+            NodeFileStorage<NonEmpty1TestNode, SeekFile>,
+            NodeFileStorage<NonEmpty2TestNode, SeekFile>,
+        >;
+
+        let dir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+
+        // Open
+        let storage = FileStorageManager::open(&dir).unwrap();
+
+        // Modify: add non_empty1_1 and non_empty2_1
+        let non_empty1_1 = TestNode::NonEmpty1(Box::new(NonEmpty1TestNode([1u8; 16])));
+        let non_empty_1_1_id = storage.reserve(&non_empty1_1);
+        storage.set(non_empty_1_1_id, &non_empty1_1).unwrap();
+        let non_empty2_1 = TestNode::NonEmpty2(Box::new(NonEmpty2TestNode([1u8; 32])));
+        let non_empty_2_1_id = storage.reserve(&non_empty2_1);
+        storage.set(non_empty_2_1_id, &non_empty2_1).unwrap();
+
+        // Checkpoint
+        let checkpoint = storage.checkpoint().unwrap();
+
+        // Modify: add non_empty1_2 and non_empty2_2
+        let non_empty1_2 = TestNode::NonEmpty1(Box::new(NonEmpty1TestNode([2u8; 16])));
+        let non_empty_1_2_id = storage.reserve(&non_empty1_2);
+        storage.set(non_empty_1_2_id, &non_empty1_2).unwrap();
+        let non_empty2_2 = TestNode::NonEmpty2(Box::new(NonEmpty2TestNode([2u8; 32])));
+        let non_empty_2_2_id = storage.reserve(&non_empty2_2);
+        storage.set(non_empty_2_2_id, &non_empty2_2).unwrap();
+
+        // Close
+        storage.close().unwrap();
+
+        // Open again
+        let storage = FileStorageManager::open(&dir).unwrap();
+        // Check that all nodes are present, but the ones added before the checkpoint are frozen
+        assert_eq!(storage.get(non_empty_1_1_id), Ok(non_empty1_1.clone()));
+        assert_eq!(storage.get(non_empty_2_1_id), Ok(non_empty2_1.clone()));
+        assert_eq!(storage.get(non_empty_1_2_id), Ok(non_empty1_2.clone()));
+        assert_eq!(storage.get(non_empty_2_2_id), Ok(non_empty2_2.clone()));
+        assert_eq!(
+            storage
+                .set(non_empty_1_1_id, &non_empty1_1)
+                .map_err(BTError::into_inner),
+            Err(Error::Frozen)
+        );
+        assert_eq!(
+            storage
+                .set(non_empty_2_1_id, &non_empty2_1)
+                .map_err(BTError::into_inner),
+            Err(Error::Frozen)
+        );
+        assert_eq!(storage.set(non_empty_1_2_id, &non_empty1_2), Ok(()));
+        assert_eq!(storage.set(non_empty_2_2_id, &non_empty2_2), Ok(()));
+
+        // Close
+        storage.close().unwrap();
+
+        // Restore to checkpoint 1
+        FileStorageManager::restore(&dir, checkpoint).unwrap();
+
+        // Open again
+        let storage = FileStorageManager::open(&dir).unwrap();
+        // Check that only the nodes added before the checkpoint are present and that they are
+        // frozen
+        assert_eq!(storage.get(non_empty_1_1_id), Ok(non_empty1_1.clone()));
+        assert_eq!(storage.get(non_empty_2_1_id), Ok(non_empty2_1.clone()));
+        assert_eq!(
+            storage.get(non_empty_1_2_id).map_err(BTError::into_inner),
+            Err(Error::NotFound)
+        );
+        assert_eq!(
+            storage.get(non_empty_2_2_id).map_err(BTError::into_inner),
+            Err(Error::NotFound)
+        );
+        assert_eq!(
+            storage
+                .set(non_empty_1_1_id, &non_empty1_1)
+                .map_err(BTError::into_inner),
+            Err(Error::Frozen)
+        );
+        assert_eq!(
+            storage
+                .set(non_empty_2_1_id, &non_empty2_1)
+                .map_err(BTError::into_inner),
+            Err(Error::Frozen)
+        );
+    }
+
     mockall::mock! {
         pub Storage<T: Send + Sync + 'static> {}
 
@@ -785,6 +981,8 @@ mod tests {
             fn commit(&self, checkpoint: u64) -> BTResult<(), Error>;
 
             fn abort(&self, checkpoint: u64) -> BTResult<(), Error>;
+
+            fn restore(path: &Path, checkpoint: u64) -> BTResult<(), Error>;
         }
 
         impl<T: Send + Sync + 'static> Storage for Storage<T> {
