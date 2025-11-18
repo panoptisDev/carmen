@@ -10,7 +10,10 @@
 
 #[allow(unused)]
 pub use nodes::VerkleNodeFileStorageManager;
-pub use nodes::{VerkleNode, empty::EmptyNode, id::VerkleNodeId, inner::InnerNode};
+pub use nodes::{
+    VerkleNode, empty::EmptyNode, id::VerkleNodeId, inner::InnerNode, leaf::FullLeafNode,
+    sparse_leaf::SparseLeafNode,
+};
 
 use crate::{
     database::{
@@ -20,8 +23,9 @@ use crate::{
             verkle_trie::VerkleTrie,
         },
     },
-    error::{BTResult, Error},
+    error::{BTError, BTResult, Error},
     node_manager::NodeManager,
+    storage::{self, RootIdProvider},
     sync::{Arc, RwLock},
     types::{Key, Value},
 };
@@ -38,11 +42,30 @@ where
     update_log: TrieUpdateLog<VerkleNodeId>,
 }
 
-impl<M: NodeManager<Id = VerkleNodeId, Node = VerkleNode> + Send + Sync> ManagedVerkleTrie<M> {
-    /// Creates a new empty [`ManagedVerkleTrie`] using the given node manager.
-    /// Returns an error if the root node cannot be created.
+impl<M> ManagedVerkleTrie<M>
+where
+    M: NodeManager<Id = VerkleNodeId, Node = VerkleNode>
+        + RootIdProvider<Id = VerkleNodeId>
+        + Send
+        + Sync,
+{
+    /// Creates a new [`ManagedVerkleTrie`] using the given node manager.
+    ///
+    /// If the node manager does not provide a root node ID for block height 0,
+    /// a new empty trie is created.
+    ///
+    /// Returns an error if the root node ID cannot be obtained from the node manager.
     pub fn try_new(manager: Arc<M>) -> BTResult<Self, Error> {
-        let root = manager.add(VerkleNode::Empty(EmptyNode))?;
+        // We currently always pass block height 0 since we assume this to be a live DB.
+        // TODO: Forward actual block height for archive DB
+        let root = match manager.get_root_id(0).map_err(BTError::into_inner) {
+            Ok(root_id) => root_id,
+            Err(storage::Error::NotFound) => {
+                let empty_node = VerkleNode::Empty(EmptyNode {});
+                manager.add(empty_node)?
+            }
+            Err(e) => return Err(e.into()),
+        };
         Ok(ManagedVerkleTrie {
             root: RwLock::new(root),
             manager,
@@ -51,8 +74,12 @@ impl<M: NodeManager<Id = VerkleNodeId, Node = VerkleNode> + Send + Sync> Managed
     }
 }
 
-impl<M: NodeManager<Id = VerkleNodeId, Node = VerkleNode> + Send + Sync> VerkleTrie
-    for ManagedVerkleTrie<M>
+impl<M> VerkleTrie for ManagedVerkleTrie<M>
+where
+    M: NodeManager<Id = VerkleNodeId, Node = VerkleNode>
+        + RootIdProvider<Id = VerkleNodeId>
+        + Send
+        + Sync,
 {
     fn lookup(&self, key: &Key) -> BTResult<Value, Error> {
         lookup(*self.root.read().unwrap(), key, &*self.manager)
@@ -71,14 +98,27 @@ impl<M: NodeManager<Id = VerkleNodeId, Node = VerkleNode> + Send + Sync> VerkleT
             .get_commitment()
             .commitment())
     }
+
+    fn after_update(&self, _block_height: u64) -> BTResult<(), Error> {
+        let root_id = *self.root.read().unwrap();
+        // We currently always pass block height 0 since we assume this to be a live DB.
+        // TODO: Forward actual block height for archive DB
+        self.manager.set_root_id(0, root_id)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ops::{Deref, DerefMut};
+
+    use mockall::{mock, predicate::eq};
+
     use super::*;
     use crate::{
         database::verkle::test_utils::{make_leaf_key, make_value},
         node_manager::in_memory_node_manager::InMemoryNodeManager,
+        sync::{RwLockReadGuard, RwLockWriteGuard},
     };
 
     // NOTE: Most tests are in verkle_trie.rs
@@ -90,6 +130,31 @@ mod tests {
 
         let root_node = manager.get_read_access(*trie.root.read().unwrap()).unwrap();
         assert!(matches!(&**root_node, VerkleNode::Empty(_)));
+    }
+
+    #[test]
+    fn try_new_gets_root_id_for_block_zero_from_node_manager() {
+        let manager = Arc::new(InMemoryNodeManager::<VerkleNodeId, VerkleNode>::new(10));
+        let expected_root_id = manager.add(VerkleNode::Inner(Box::default())).unwrap();
+        manager.set_root_id(0, expected_root_id).unwrap();
+
+        let trie = ManagedVerkleTrie::try_new(manager.clone()).unwrap();
+        let received_root_id = *trie.root.read().unwrap();
+        assert_eq!(received_root_id, expected_root_id);
+    }
+
+    #[test]
+    fn try_new_propagates_error_from_node_manager() {
+        let mut manager = MockTestNodeManager::new();
+        manager
+            .expect_get_root_id()
+            .with(eq(0))
+            .returning(|_| Err(storage::Error::Frozen.into()));
+        let result = ManagedVerkleTrie::try_new(Arc::new(manager)).map_err(BTError::into_inner);
+        assert!(matches!(
+            result,
+            Err(Error::Storage(storage::Error::Frozen))
+        ));
     }
 
     #[test]
@@ -108,5 +173,69 @@ mod tests {
             .commitment();
 
         assert_eq!(received, expected);
+    }
+
+    #[test]
+    fn after_update_updates_root_id_in_node_manager() {
+        let manager = Arc::new(InMemoryNodeManager::<VerkleNodeId, VerkleNode>::new(10));
+        let trie = ManagedVerkleTrie::try_new(manager.clone()).unwrap();
+        trie.store(&make_leaf_key(&[1], 1), &make_value(1)).unwrap();
+        let root_id = *trie.root.read().unwrap();
+
+        trie.after_update(42).unwrap();
+        // We currently always set the root id for block height 0
+        let stored_root_id = manager.get_root_id(0).unwrap();
+        assert_eq!(root_id, stored_root_id);
+    }
+
+    struct TestNodeWrapper {
+        node: VerkleNode,
+    }
+
+    impl Deref for TestNodeWrapper {
+        type Target = VerkleNode;
+
+        fn deref(&self) -> &Self::Target {
+            &self.node
+        }
+    }
+
+    impl DerefMut for TestNodeWrapper {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.node
+        }
+    }
+
+    mock! {
+        pub TestNodeManager {}
+
+        impl RootIdProvider for TestNodeManager {
+            type Id = VerkleNodeId;
+
+            fn get_root_id(&self, block_height: u64) -> BTResult<<Self as RootIdProvider>::Id, storage::Error>;
+
+            fn set_root_id(&self, block_height: u64, root_id: <Self as RootIdProvider>::Id) -> BTResult<(), storage::Error>;
+        }
+
+        impl NodeManager for TestNodeManager {
+            type Id = VerkleNodeId;
+            type Node = VerkleNode;
+
+            fn add(&self, node: <Self as NodeManager>::Node) -> BTResult<<Self as NodeManager>::Id, Error>;
+
+            #[allow(refining_impl_trait)]
+            fn get_read_access<'a>(
+                &'a self,
+                id: <Self as NodeManager>::Id,
+            ) -> BTResult<RwLockReadGuard<'a, TestNodeWrapper>, Error>;
+
+            #[allow(refining_impl_trait)]
+            fn get_write_access<'a>(
+                &'a self,
+                id: <Self as NodeManager>::Id,
+            ) -> BTResult<RwLockWriteGuard<'a, TestNodeWrapper>, Error>;
+
+            fn delete(&self, id: <Self as NodeManager>::Id) -> BTResult<(), Error>;
+        }
     }
 }
