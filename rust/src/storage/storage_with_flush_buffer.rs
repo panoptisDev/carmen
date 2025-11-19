@@ -8,9 +8,9 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-use std::path::Path;
+use std::{cmp, path::Path};
 
-use dashmap::DashMap;
+use crossbeam_skiplist::SkipMap;
 
 use crate::{
     error::BTResult,
@@ -52,7 +52,7 @@ where
 impl<S> Storage for StorageWithFlushBuffer<S>
 where
     S: Storage + 'static,
-    S::Id: std::hash::Hash + Eq + Send + Sync,
+    S::Id: std::hash::Hash + cmp::Ord + Send + Sync,
     S::Item: Clone + Send + Sync,
 {
     type Id = S::Id;
@@ -60,7 +60,7 @@ where
 
     fn open(path: &Path) -> BTResult<Self, Error> {
         let storage = Arc::new(S::open(path)?);
-        let flush_buffer = Arc::new(DashMap::new());
+        let flush_buffer = Arc::new(SkipMap::new());
         let workers = FlushWorkers::new(&flush_buffer, &storage);
         Ok(StorageWithFlushBuffer {
             flush_buffer,
@@ -162,14 +162,14 @@ struct FlushWorkers {
 }
 
 impl FlushWorkers {
-    const WORKER_COUNT: usize = 10; // TODO the optimal number needs to be determined based on benchmarks
+    const WORKER_COUNT: usize = 2; // TODO the optimal number needs to be determined based on benchmarks
 
     /// Creates a new set of flush workers that will process items from the flush buffer and
     /// write them to the underlying storage layer.
     fn new<S>(flush_buffer: &Arc<FlushBuffer<S::Id, S::Item>>, storage: &Arc<S>) -> Self
     where
         S: Storage + Send + Sync + 'static,
-        S::Id: Eq + std::hash::Hash + Send + Sync,
+        S::Id: Eq + std::hash::Hash + Send + Sync + cmp::Ord,
         S::Item: Clone + Send + Sync,
     {
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -194,16 +194,14 @@ impl FlushWorkers {
     ) -> BTResult<(), Error>
     where
         S: Storage,
-        S::Id: Eq + std::hash::Hash + Send + Sync,
-        S::Item: Clone + Send + Sync,
+        S::Id: std::hash::Hash + Send + Sync + cmp::Ord + 'static,
+        S::Item: Clone + Send + Sync + 'static,
     {
         loop {
-            let item = flush_buffer
-                .iter()
-                .next()
-                .map(|entry| (*entry.key(), entry.value().clone()));
-
-            if let Some((id, op)) = item {
+            if let Some((id, op)) = flush_buffer
+                .pop_back()
+                .map(|entry| (*entry.key(), entry.value().clone()))
+            {
                 match op {
                     Op::Set(node) => {
                         storage.set(id, &node)?;
@@ -221,7 +219,6 @@ impl FlushWorkers {
                         storage.delete(id)?;
                     }
                 }
-                flush_buffer.remove(&id);
             } else {
                 // the buffer is currently empty
                 if shutdown.load(Ordering::SeqCst) {
@@ -243,7 +240,7 @@ impl FlushWorkers {
     }
 }
 
-type FlushBuffer<ID, N> = DashMap<ID, Op<N>>;
+type FlushBuffer<ID, N> = SkipMap<ID, Op<N>>;
 
 /// An element in the flush buffer that can either be a set operation or a delete operation.
 #[derive(Debug, Clone)]
@@ -263,7 +260,7 @@ mod tests {
         error::BTError,
         storage::file::{
             NodeFileStorage, SeekFile, TestNode, TestNodeFileStorageManager, TestNodeId,
-            TestNodeKind,
+            TestNodeKind, file_storage_manager::NonEmpty1TestNode,
         },
         sync::{
             Arc,
@@ -271,7 +268,10 @@ mod tests {
             is_finished, thread,
         },
         types::TreeId,
-        utils::test_dir::{Permissions, TestDir},
+        utils::{
+            shuttle::run_shuttle_check,
+            test_dir::{Permissions, TestDir},
+        },
     };
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn get_returns_copy_of_node_if_present_as_set_op() {
         let storage = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn get_returns_not_found_error_if_id_is_present_as_delete_op() {
         let storage = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -379,7 +379,7 @@ mod tests {
         });
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -403,7 +403,7 @@ mod tests {
             .returning(move |_| id);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -422,7 +422,7 @@ mod tests {
         let node = TestNode::NonEmpty1(Box::default());
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -444,7 +444,7 @@ mod tests {
         let id = TestNodeId::from_idx_and_node_kind(0, TestNodeKind::NonEmpty1);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -467,7 +467,7 @@ mod tests {
         mock_storage.expect_close().times(1).returning(|| Ok(()));
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -490,7 +490,7 @@ mod tests {
             .returning(|| Ok(1));
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(DashMap::new()),
+            flush_buffer: Arc::new(SkipMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn flush_workers_new_spawns_threads() {
-        let flush_buffer = Arc::new(DashMap::new());
+        let flush_buffer = Arc::new(SkipMap::new());
         let storage = Arc::new(MockStorage::new());
 
         let workers = FlushWorkers::new(&flush_buffer, &storage);
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn flush_workers_task_calls_underlying_storage_layer_and_removes_elements_once_processed() {
-        let flush_buffer = Arc::new(DashMap::new());
+        let flush_buffer = Arc::new(SkipMap::new());
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let mut storage = MockStorage::new();
@@ -610,6 +610,31 @@ mod tests {
         assert_eq!(
             shutdown_received.load(Ordering::SeqCst),
             FlushWorkers::WORKER_COUNT
+        );
+    }
+
+    #[test]
+    fn shuttletest_flush_workers_executes_a_task_only_once() {
+        run_shuttle_check(
+            || {
+                let testdir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+                // Use an actual storage as mockall does not use shuttle sync primitives, which we
+                // need to ensure context switches between shuttle threads.
+                let storage = Arc::new(
+                    NodeFileStorage::<NonEmpty1TestNode, SeekFile>::open(&testdir).unwrap(),
+                );
+                let node = NonEmpty1TestNode::default();
+                let id = storage.reserve(&node);
+                storage.set(id, &node).unwrap();
+
+                let flush_buffer = Arc::new(SkipMap::new());
+                let workers = FlushWorkers::new(&flush_buffer, &storage.clone());
+                // This should call delete only once, and panic if two workers delete the same ID
+                flush_buffer.insert(id, Op::Delete);
+
+                workers.shutdown().unwrap();
+            },
+            100,
         );
     }
 
