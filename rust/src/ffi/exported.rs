@@ -1185,7 +1185,7 @@ mod tests {
     use mockall::predicate::{always, eq};
 
     use super::*;
-    use crate::{MockCarmenDb, MockCarmenState};
+    use crate::{MockCarmenDb, MockCarmenState, sync::thread};
 
     #[test]
     fn carmen_rust_open_database_returns_non_null_pointers() {
@@ -2420,7 +2420,7 @@ mod tests {
             let db = Box::into_raw(Box::new(db_wrapper)) as *mut c_void;
 
             let thread_safe_db = ThreadSafePtr(db);
-            std::thread::scope(|s| {
+            thread::scope(|s| {
                 s.spawn(|| {
                     // This is needed so ensure that a reference to ThreadSafePtr is captured and
                     // not a reference to *mut c_void which is not Sync
@@ -2455,7 +2455,7 @@ mod tests {
             let state = Box::into_raw(Box::new(state_wrapper)) as *mut c_void;
 
             let thread_safe_state = ThreadSafePtr(state);
-            std::thread::scope(|s| {
+            thread::scope(|s| {
                 s.spawn(|| {
                     // This is needed so ensure that a reference to ThreadSafePtr is captured and
                     // not a reference to *mut c_void which is not Sync

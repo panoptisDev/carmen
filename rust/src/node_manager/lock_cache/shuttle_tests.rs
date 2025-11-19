@@ -8,6 +8,13 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
+// We explicitly use std::sync primitives to write test code that does not interfere with shuttle
+// scheduling.
+#![cfg_attr(
+    feature = "shuttle",
+    allow(clippy::disallowed_types, clippy::disallowed_methods)
+)]
+
 use core::panic;
 use std::{env, iter, num::NonZero, panic::catch_unwind};
 
@@ -32,6 +39,7 @@ fn shuttletest_cached_node_manager_multiple_get_on_same_id_insert_in_cache_only_
         move || {
             const ID: u32 = 0;
             let insert_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
             let insert_fn = {
                 let insert_count = insert_count.clone();
                 move || {
