@@ -11,6 +11,7 @@
 package externalstate
 
 //go:generate sh ../../lib/build_libcarmen.sh
+//go:generate mockgen -source external_state.go -destination external_state_mocks.go -package externalstate
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../cpp
@@ -30,6 +31,8 @@ import (
 	"path/filepath"
 	"unsafe"
 
+	"github.com/0xsoniclabs/carmen/go/common/future"
+	"github.com/0xsoniclabs/carmen/go/common/result"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -421,12 +424,16 @@ func (s *ExternalState) GetCodeSize(address common.Address) (int, error) {
 }
 
 func (s *ExternalState) GetHash() (common.Hash, error) {
+	return s.GetCommitment().Await().Get()
+}
+
+func (s *ExternalState) GetCommitment() future.Future[result.Result[common.Hash]] {
 	var hash common.Hash
-	result := s.bindings.GetHash(s.state, unsafe.Pointer(&hash[0]))
-	if result != C.kResult_Success {
-		return common.Hash{}, fmt.Errorf("failed to get state hash (error code %v)", result)
+	res := s.bindings.GetHash(s.state, unsafe.Pointer(&hash[0]))
+	if res != C.kResult_Success {
+		return future.Immediate(result.Err[common.Hash](fmt.Errorf("failed to get commitment (error code %v)", res)))
 	}
-	return hash, nil
+	return future.Immediate(result.Ok(hash))
 }
 
 func (s *ExternalState) Apply(block uint64, update common.Update) error {
