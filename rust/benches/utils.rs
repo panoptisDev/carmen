@@ -14,16 +14,46 @@ use std::{
     time::{Duration, Instant},
 };
 
+use criterion::{BenchmarkGroup, BenchmarkId, measurement::WallTime};
+
 /// Returns true with the given probability (in percent).
 #[allow(dead_code)]
 pub fn with_prob(prob: u8) -> bool {
     fastrand::f32() < (prob as f32) / 100.0
 }
 
-/// Returns an iterator over powers of 2 up to the number of available threads.
+/// Returns an iterator over powers of 2 up to the number of available threads or to the given
+/// maximum number of threads.
 #[allow(dead_code)]
-pub fn pow_2_threads() -> impl Iterator<Item = usize> {
-    (1..=thread::available_parallelism().unwrap().get()).filter(|x| x.is_power_of_two())
+pub fn pow_2_threads(max_threads: Option<usize>) -> impl Iterator<Item = usize> {
+    let max = max_threads.unwrap_or_else(|| thread::available_parallelism().unwrap().get());
+    (1..=max).filter(|x| x.is_power_of_two())
+}
+
+/// Utility function to benchmark a call to an expensive function `func` that mutates some state.
+/// The state is initialized before each call using the `init_state` closure and not included
+/// in the timing.
+#[allow(dead_code)]
+pub fn bench_expensive_call_with_state_mutation<T>(
+    c: &mut BenchmarkGroup<'_, WallTime>,
+    bench_name: &str,
+    init_state: impl Fn() -> T,
+    func: impl Fn(&T),
+) {
+    c.bench_with_input(BenchmarkId::from_parameter(bench_name), &(), |b, _| {
+        b.iter_custom(|num_samples| {
+            let mut total = Duration::ZERO;
+
+            for _ in 0..num_samples {
+                let state = init_state();
+                let start = Instant::now();
+                func(&state);
+                total += start.elapsed();
+            }
+
+            total
+        });
+    });
 }
 
 /// Executes the given operation in parallel using the specified number of threads.
