@@ -10,6 +10,7 @@
 
 mod managed_trie;
 pub mod verkle;
+pub mod visitor;
 
 pub use managed_trie::ManagedTrieNode;
 pub use verkle::{
