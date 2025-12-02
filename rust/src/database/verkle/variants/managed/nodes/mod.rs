@@ -8,6 +8,8 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
+use std::ops::Deref;
+
 use derive_deftly::Deftly;
 
 use crate::{
@@ -27,6 +29,7 @@ use crate::{
     },
     error::{BTResult, Error},
     node_manager::NodeManager,
+    statistics::node_count::NodeCountVisitor,
     storage::file::derive_deftly_template_FileStorageManager,
     types::{HasEmptyNode, Key, NodeSize, ToNodeKind, Value},
 };
@@ -95,6 +98,17 @@ impl VerkleNode {
             }
         }
         Ok(())
+    }
+}
+
+impl NodeVisitor<VerkleNode> for NodeCountVisitor {
+    fn visit(&mut self, node: &VerkleNode, level: u64) -> BTResult<(), Error> {
+        match node {
+            VerkleNode::Empty(n) => self.visit(n, level),
+            VerkleNode::Inner(n) => self.visit(n.deref(), level),
+            VerkleNode::Leaf2(n) => self.visit(n.deref(), level),
+            VerkleNode::Leaf256(n) => self.visit(n.deref(), level),
+        }
     }
 }
 
@@ -274,6 +288,7 @@ pub fn make_smallest_leaf_node_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TreeId;
 
     // NOTE: Tests for the accept method are in managed/mod.rs
 
@@ -346,6 +361,72 @@ mod tests {
         assert_eq!(
             VerkleNodeKind::min_non_empty_node_size(),
             VerkleNode::min_non_empty_node_size()
+        );
+    }
+
+    #[test]
+    fn node_count_visitor_visit_visit_nodes() {
+        let mut visitor = NodeCountVisitor::default();
+        let level = 0;
+
+        let node = VerkleNode::Empty(EmptyNode);
+        assert!(visitor.visit(&node, level).is_ok());
+
+        let mut node = InnerVerkleNode::default();
+        for i in 0..256 {
+            node.children[i] = VerkleNodeId::from_idx_and_node_kind(1, VerkleNodeKind::Inner);
+        }
+        assert!(visitor.visit(&node, level + 1).is_ok());
+
+        let mut node = Leaf2VerkleNode::default();
+        for i in 0..2 {
+            node.values[i] = ValueWithIndex {
+                index: i as u8,
+                value: [1; 32],
+            };
+        }
+        let node = VerkleNode::Leaf2(Box::new(node));
+        assert!(visitor.visit(&node, level + 2).is_ok());
+
+        let mut node = Leaf256VerkleNode::default();
+        for i in 0..256 {
+            node.values[i] = [1; 32];
+        }
+        let node = VerkleNode::Leaf256(Box::new(node));
+        assert!(visitor.visit(&node, level + 3).is_ok());
+
+        assert_eq!(visitor.node_count.levels_count.len(), 4);
+        assert_eq!(
+            visitor.node_count.levels_count[0]
+                .get("Empty")
+                .unwrap()
+                .size_count
+                .get(&0),
+            Some(&1)
+        );
+        assert_eq!(
+            visitor.node_count.levels_count[1]
+                .get("Inner")
+                .unwrap()
+                .size_count
+                .get(&256),
+            Some(&1)
+        );
+        assert_eq!(
+            visitor.node_count.levels_count[2]
+                .get("Leaf")
+                .unwrap()
+                .size_count
+                .get(&2),
+            Some(&1)
+        );
+        assert_eq!(
+            visitor.node_count.levels_count[3]
+                .get("Leaf")
+                .unwrap()
+                .size_count
+                .get(&256),
+            Some(&1)
         );
     }
 }
