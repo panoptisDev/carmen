@@ -14,9 +14,9 @@ use crate::{
         verkle::{
             KeyedUpdateBatch,
             variants::managed::{
-                InnerNode, VerkleNode, VerkleNodeId,
+                FullInnerNode, VerkleNode, VerkleNodeId,
                 commitment::{VerkleCommitment, VerkleCommitmentInput},
-                nodes::make_smallest_leaf_node_for,
+                nodes::{make_smallest_inner_node_for, make_smallest_leaf_node_for},
             },
         },
         visitor::NodeVisitor,
@@ -62,10 +62,10 @@ impl ManagedTrieNode for EmptyNode {
         if depth == 0 {
             // While conceptually it would suffice to create a leaf node here,
             // Geth always creates an inner node (and we want to stay compatible).
-            let inner = InnerNode::default();
-            Ok(StoreAction::HandleTransform(VerkleNode::Inner(Box::new(
-                inner,
-            ))))
+            let inner = FullInnerNode::default();
+            Ok(StoreAction::HandleTransform(VerkleNode::Inner256(
+                Box::new(inner),
+            )))
         } else {
             // Safe to unwrap: Slice is always 31 bytes
             let stem = updates.first_key()[..31].try_into().unwrap();
@@ -74,15 +74,17 @@ impl ManagedTrieNode for EmptyNode {
                     updates.split(31).count(), // this counts the number of distinct keys
                     stem,
                     &[],
-                    self.get_commitment(),
+                    &self.get_commitment(),
                 )?;
                 Ok(StoreAction::HandleTransform(new_leaf))
             } else {
                 // Because we have non-matching stems, we need an inner node
-                let inner = InnerNode::default();
-                Ok(StoreAction::HandleTransform(VerkleNode::Inner(Box::new(
-                    inner,
-                ))))
+                let new_inner = make_smallest_inner_node_for(
+                    updates.split(depth).count(),
+                    &[],
+                    &self.get_commitment(),
+                )?;
+                Ok(StoreAction::HandleTransform(new_inner))
             }
         }
     }
@@ -160,7 +162,7 @@ mod tests {
             .unwrap();
         match action {
             StoreAction::HandleTransform(inner) => {
-                assert!(matches!(inner, VerkleNode::Inner(_)));
+                assert!(matches!(inner, VerkleNode::Inner9(_)));
             }
             _ => panic!("expected HandleTransform to inner node"),
         }
@@ -225,7 +227,7 @@ mod tests {
                         smallest_leaf_size(),
                         [0; 31],
                         &[],
-                        VerkleCommitment::default()
+                        &VerkleCommitment::default()
                     )
                     .unwrap(),
                 );
@@ -257,7 +259,7 @@ mod tests {
             StoreAction::HandleTransform(leaf) => {
                 assert_eq!(
                     leaf,
-                    make_smallest_leaf_node_for(256, [0; 31], &[], VerkleCommitment::default())
+                    make_smallest_leaf_node_for(256, [0; 31], &[], &VerkleCommitment::default())
                         .unwrap(),
                 );
             }
@@ -274,10 +276,10 @@ mod tests {
 
     fn smallest_leaf_size() -> usize {
         let prev =
-            make_smallest_leaf_node_for(1, [0; 31], &[], VerkleCommitment::default()).unwrap();
+            make_smallest_leaf_node_for(1, [0; 31], &[], &VerkleCommitment::default()).unwrap();
         for i in 2..=256 {
             let leaf =
-                make_smallest_leaf_node_for(i, [0; 31], &[], VerkleCommitment::default()).unwrap();
+                make_smallest_leaf_node_for(i, [0; 31], &[], &VerkleCommitment::default()).unwrap();
             if prev != leaf {
                 return i - 1;
             }

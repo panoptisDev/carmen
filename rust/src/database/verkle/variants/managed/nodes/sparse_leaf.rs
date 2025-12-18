@@ -16,9 +16,12 @@ use crate::{
         verkle::{
             KeyedUpdate, KeyedUpdateBatch,
             variants::managed::{
-                InnerNode, VerkleNode, VerkleNodeId,
+                VerkleNode, VerkleNodeId,
                 commitment::{VerkleCommitment, VerkleCommitmentInput},
-                nodes::{ValueWithIndex, make_smallest_leaf_node_for},
+                nodes::{
+                    ValueWithIndex, VerkleIdWithIndex, make_smallest_inner_node_for,
+                    make_smallest_leaf_node_for,
+                },
             },
         },
         visitor::NodeVisitor,
@@ -45,11 +48,11 @@ impl<const N: usize> SparseLeafNode<N> {
     pub fn from_existing(
         stem: [u8; 31],
         values: &[ValueWithIndex],
-        commitment: VerkleCommitment,
+        commitment: &VerkleCommitment,
     ) -> BTResult<Self, Error> {
         let mut leaf = SparseLeafNode {
             stem,
-            commitment,
+            commitment: *commitment,
             ..Default::default()
         };
 
@@ -121,10 +124,16 @@ impl<const N: usize> ManagedTrieNode for SparseLeafNode<N> {
         // If not all keys match the stem, we have to introduce a new inner node.
         if !updates.all_stems_match(&self.stem) {
             let index = self.stem[depth as usize];
-            let inner = InnerNode::new_with_leaf(index, self_id, &self.commitment);
-            return Ok(StoreAction::HandleReparent(VerkleNode::Inner(Box::new(
-                inner,
-            ))));
+            let self_child = VerkleIdWithIndex {
+                index,
+                item: self_id,
+            };
+            let inner = make_smallest_inner_node_for(
+                2,
+                &[self_child],
+                &VerkleCommitment::from_existing(&self.commitment),
+            )?;
+            return Ok(StoreAction::HandleReparent(inner));
         }
 
         if let Some(slots) = ValueWithIndex::required_slot_count_for(
@@ -136,7 +145,7 @@ impl<const N: usize> ManagedTrieNode for SparseLeafNode<N> {
                 slots,
                 self.stem,
                 &self.values,
-                self.commitment,
+                &self.commitment,
             )?));
         }
 
@@ -295,7 +304,7 @@ mod tests {
                 index: 2,
                 item: VALUE_1,
             }];
-            let node = SparseLeafNode::<3>::from_existing(STEM, &values, commitment).unwrap();
+            let node = SparseLeafNode::<3>::from_existing(STEM, &values, &commitment).unwrap();
             assert_eq!(node.stem, STEM);
             assert_eq!(node.commitment, commitment);
             // Index is put into the correct slot
@@ -312,7 +321,7 @@ mod tests {
                 index: 18,
                 item: VALUE_1,
             }];
-            let node = SparseLeafNode::<3>::from_existing(STEM, &values, commitment).unwrap();
+            let node = SparseLeafNode::<3>::from_existing(STEM, &values, &commitment).unwrap();
             // The value is put into the first available slot.
             // Note that the search begins at slot 18 % 3, which happens to be 0.
             assert_eq!(node.values[0], values[0]);
@@ -334,7 +343,7 @@ mod tests {
                     item: VALUE_1,
                 },
             ];
-            let node = SparseLeafNode::<3>::from_existing(STEM, &values, commitment).unwrap();
+            let node = SparseLeafNode::<3>::from_existing(STEM, &values, &commitment).unwrap();
             // Since the first slot is taken by index 18, index 0 and 1 get shifted back by one.
             assert_eq!(node.values[0], values[0]);
             assert_eq!(node.values[1], values[1]);
@@ -358,7 +367,7 @@ mod tests {
                     item: VALUE_1,
                 },
             ];
-            let node = SparseLeafNode::<2>::from_existing(STEM, &values, commitment).unwrap();
+            let node = SparseLeafNode::<2>::from_existing(STEM, &values, &commitment).unwrap();
             assert_eq!(node.values[0], values[0]);
             assert_eq!(node.values[1], values[2]);
         }
@@ -381,7 +390,7 @@ mod tests {
             },
         ];
         let commitment = VerkleCommitment::default();
-        let result = SparseLeafNode::<2>::from_existing(STEM, &values, commitment);
+        let result = SparseLeafNode::<2>::from_existing(STEM, &values, &commitment);
         assert!(matches!(
             result.map_err(BTError::into_inner),
             Err(Error::CorruptedState(e)) if e.contains("too many non-zero values to fit into sparse leaf of size 2")
@@ -443,8 +452,10 @@ mod tests {
             .next_store_action(update, divergence_at as u8, self_id)
             .unwrap();
         match result {
-            StoreAction::HandleReparent(VerkleNode::Inner(inner)) => {
-                assert_eq!(inner.children[STEM[divergence_at] as usize], self_id);
+            StoreAction::HandleReparent(VerkleNode::Inner9(inner)) => {
+                let slot =
+                    VerkleIdWithIndex::get_slot_for(&inner.children, STEM[divergence_at]).unwrap();
+                assert_eq!(inner.children[slot].item, self_id);
                 // Newly created inner node has commitment of the leaf.
                 assert_eq!(inner.get_commitment().commitment(), commitment.commitment());
             }
