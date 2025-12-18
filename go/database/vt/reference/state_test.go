@@ -19,6 +19,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/future"
 	"github.com/0xsoniclabs/carmen/go/common/result"
+	"github.com/0xsoniclabs/carmen/go/database/vt/reference/trie"
 	"github.com/0xsoniclabs/carmen/go/state"
 	geth_common "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/ethereum/go-ethereum/triedb/database"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestState_ImplementsState(t *testing.T) {
@@ -40,6 +42,19 @@ func TestState_NewState_CreatesEmptyState(t *testing.T) {
 	state := newState()
 	require.NotNil(state)
 	require.Zero(state.GetHash())
+}
+
+func TestState_TrieConfig_ReturnsTheUnderlyingTrieConfig(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	trie := NewMockTrie(ctrl)
+
+	want := "my-trie-config"
+	trie.EXPECT().Config().Return(want)
+
+	state := &State{trie: trie}
+	got := state.TrieConfig()
+	require.Equal(want, got)
 }
 
 func TestState_Exists(t *testing.T) {
@@ -749,4 +764,10 @@ type refTestDb struct {
 
 func (db *refTestDb) NodeReader(stateRoot geth_common.Hash) (database.NodeReader, error) {
 	panic("NodeReader not implemented")
+}
+
+// newState creates a new, empty in-memory state instance based on a reference
+// version of the Verkle trie.
+func newState() state.State {
+	return NewStateUsing(&trie.Trie{})
 }
