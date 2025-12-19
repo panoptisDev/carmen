@@ -128,8 +128,15 @@ impl<const N: usize> ManagedTrieNode for SparseLeafNode<N> {
                 index,
                 item: self_id,
             };
+            let slots = updates
+                .split(depth)
+                .map(|updates| {
+                    (self.stem[..depth as usize] != updates.first_key()[..depth as usize]) as usize
+                })
+                .sum::<usize>()
+                + 1;
             let inner = make_smallest_inner_node_for(
-                2,
+                slots,
                 &[self_child],
                 &VerkleCommitment::from_existing(&self.commitment),
             )?;
@@ -460,6 +467,30 @@ mod tests {
                 assert_eq!(inner.get_commitment().commitment(), commitment.commitment());
             }
             _ => panic!("expected HandleReparent with inner node"),
+        }
+    }
+
+    #[rstest_reuse::apply(different_leaf_sizes)]
+    fn next_store_action_with_non_matching_stem_returns_parent_large_enough_for_all_updates(
+        #[case] node: Box<dyn VerkleManagedTrieNode<Value>>,
+    ) {
+        let updates = KeyedUpdateBatch::from_key_value_pairs(
+            &(1..=255)
+                .map(|i| (Key::from_index_values(i, &[]), Value::default()))
+                .collect::<Vec<_>>(),
+        );
+        let result = node
+            .next_store_action(updates.clone(), 1, VerkleNodeId::default())
+            .unwrap();
+        match result {
+            StoreAction::HandleReparent(inner) => {
+                // This new inner node is big enough to hold all leaves that will be created
+                assert!(matches!(
+                    inner.next_store_action(updates, 1, VerkleNodeId::default()),
+                    Ok(StoreAction::Descend(_))
+                ));
+            }
+            _ => panic!("expected HandleReparent"),
         }
     }
 
