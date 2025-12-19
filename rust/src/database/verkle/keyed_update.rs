@@ -14,6 +14,7 @@ use std::{
     ops::{Deref, Range},
 };
 
+use rayon::slice::ParallelSliceMut;
 use sha3::{Digest, Keccak256};
 use verkle_trie::Key;
 
@@ -227,9 +228,13 @@ impl KeyedUpdateBatch<'static> {
                 value: *value,
             });
         }
-        updates.sort();
         if updates.is_empty() {
             return Err(EmptyUpdate);
+        }
+        if updates.len() > 100_000 {
+            updates.par_sort_unstable();
+        } else {
+            updates.sort_unstable();
         }
         Ok(KeyedUpdateBatch(Cow::Owned(updates)))
     }
