@@ -45,7 +45,17 @@ impl VerkleTrie for CrateCryptoInMemoryVerkleTrie {
         Ok(self.trie.read().unwrap().get(*key).unwrap_or_default())
     }
 
-    fn store(&self, updates: &KeyedUpdateBatch) -> BTResult<(), crate::error::Error> {
+    fn store(
+        &self,
+        updates: &KeyedUpdateBatch,
+        is_archive: bool,
+    ) -> BTResult<(), crate::error::Error> {
+        if is_archive {
+            return Err(Error::UnsupportedImplementation(
+                "CrateCrytpoInMemoryVerkleTrie does not support archive mode".to_owned(),
+            )
+            .into());
+        }
         let mut trie = self.trie.write().unwrap();
         for update in updates.iter() {
             match update {
