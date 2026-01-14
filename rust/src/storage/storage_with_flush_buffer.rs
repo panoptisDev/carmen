@@ -8,9 +8,10 @@
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-use std::{cmp, path::Path, time::Duration};
+#[allow(clippy::disallowed_types)]
+use std::{cmp, path::Path, sync::atomic::AtomicU8 as StdAtomicU8, time::Duration};
 
-use crossbeam_skiplist::SkipMap;
+use dashmap::DashMap;
 
 use crate::{
     error::BTResult,
@@ -52,7 +53,7 @@ where
 impl<S> Storage for StorageWithFlushBuffer<S>
 where
     S: Storage + 'static,
-    S::Id: std::hash::Hash + cmp::Ord + Send + Sync,
+    S::Id: std::hash::Hash + Eq + Send + Sync,
     S::Item: Clone + Send + Sync,
 {
     type Id = S::Id;
@@ -60,7 +61,7 @@ where
 
     fn open(path: &Path, db_mode: DbMode) -> BTResult<Self, Error> {
         let storage = Arc::new(S::open(path, db_mode)?);
-        let flush_buffer = Arc::new(SkipMap::new());
+        let flush_buffer = Arc::new(DashMap::new());
         let workers = FlushWorkers::new(&flush_buffer, &storage);
         Ok(StorageWithFlushBuffer {
             flush_buffer,
@@ -71,7 +72,7 @@ where
 
     fn get(&self, id: Self::Id) -> BTResult<Self::Item, Error> {
         match self.flush_buffer.get(&id) {
-            Some(value) => match value.value() {
+            Some(value) => match &value.value().op {
                 Op::Set(node) => Ok(node.clone()),
                 Op::Delete => Err(Error::NotFound.into()),
             },
@@ -82,20 +83,48 @@ where
     fn reserve(&self, node: &Self::Item) -> Self::Id {
         let id = self.storage.reserve(node);
         // The id may have been deleted in the underlying storage layer and reassigned here, but not
-        // yet removed from the flush buffer (racing against flush workers). In this case, we remove
-        // it from the flush buffer to ensure that the id no longer returns an
-        // [`Error::NotFound`].
-        self.flush_buffer.remove(&id);
+        // yet removed from the flush buffer (racing against flush workers). In this case, which is
+        // very rare, spin until the flush worker removed the id from the flush buffer to ensure
+        // that a query for the id no longer returns an [`Error::NotFound`].
+        while self.flush_buffer.contains_key(&id) {
+            hint::spin_loop();
+        }
         id
     }
 
     fn set(&self, id: Self::Id, node: &Self::Item) -> BTResult<(), Error> {
-        self.flush_buffer.insert(id, Op::Set(node.clone()));
+        self.flush_buffer
+            .entry(id)
+            .and_modify(|entry| {
+                entry.op = Op::Set(node.clone());
+                // Dirty stays Dirty, InProgress becomes InProgressDirty, InProgressDirty stays
+                // InProgressDirty
+                let _ = entry.status.compare_exchange(
+                    Status::InProgress as u8,
+                    Status::InProgressDirty as u8,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+            })
+            .or_insert(OpWithStatus::new(Op::Set(node.clone())));
         Ok(())
     }
 
     fn delete(&self, id: Self::Id) -> BTResult<(), Error> {
-        self.flush_buffer.insert(id, Op::Delete);
+        self.flush_buffer
+            .entry(id)
+            .and_modify(|entry| {
+                entry.op = Op::Delete;
+                // Dirty stays Dirty, InProgress becomes InProgressDirty, InProgressDirty stays
+                // InProgressDirty
+                let _ = entry.status.compare_exchange(
+                    Status::InProgress as u8,
+                    Status::InProgressDirty as u8,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+            })
+            .or_insert(OpWithStatus::new(Op::Delete));
         Ok(())
     }
 
@@ -173,7 +202,7 @@ impl FlushWorkers {
     fn new<S>(flush_buffer: &Arc<FlushBuffer<S::Id, S::Item>>, storage: &Arc<S>) -> Self
     where
         S: Storage + Send + Sync + 'static,
-        S::Id: Eq + std::hash::Hash + Send + Sync + cmp::Ord,
+        S::Id: Eq + std::hash::Hash + Send + Sync,
         S::Item: Clone + Send + Sync,
     {
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -200,18 +229,30 @@ impl FlushWorkers {
     ) -> BTResult<(), Error>
     where
         S: Storage,
-        S::Id: std::hash::Hash + Send + Sync + cmp::Ord + 'static,
-        S::Item: Clone + Send + Sync + 'static,
+        S::Id: Eq + std::hash::Hash + Send + Sync,
+        S::Item: Clone + Send + Sync,
     {
         let min_sleep_time = Duration::from_millis(10);
         let max_sleep_time = Duration::from_secs(1);
         let mut sleep_time = min_sleep_time;
 
         loop {
-            if let Some((id, op)) = flush_buffer
-                .pop_back()
-                .map(|entry| (*entry.key(), entry.value().clone()))
-            {
+            let item = flush_buffer
+                .iter()
+                .find(|entry| {
+                    entry
+                        .status
+                        .compare_exchange(
+                            Status::Dirty as u8,
+                            Status::InProgress as u8,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                })
+                .map(|entry| (*entry.key(), entry.value().op.clone()));
+
+            if let Some((id, op)) = item {
                 match op {
                     Op::Set(node) => {
                         storage.set(id, &node)?;
@@ -228,6 +269,21 @@ impl FlushWorkers {
                         // is not found in the flush buffer.
                         storage.delete(id)?;
                     }
+                }
+                if flush_buffer
+                    .remove_if(&id, |_, entry| {
+                        entry.status.load(Ordering::SeqCst) == Status::InProgress as u8
+                    })
+                    .is_none()
+                {
+                    // The status was not InProgress, meaning it was set to InProgressDirty while we
+                    // were processing the operation. Now that we are done, we need to set it back
+                    // to Dirty so that it gets processed again.
+                    flush_buffer
+                        .get_mut(&id)
+                        .unwrap()
+                        .status
+                        .store(Status::Dirty as u8, Ordering::SeqCst);
                 }
                 sleep_time = min_sleep_time;
             } else {
@@ -250,13 +306,46 @@ impl FlushWorkers {
     }
 }
 
-type FlushBuffer<ID, N> = SkipMap<ID, Op<N>>;
+type FlushBuffer<ID, N> = DashMap<ID, OpWithStatus<N>>;
 
 /// An element in the flush buffer that can either be a set operation or a delete operation.
 #[derive(Debug, Clone)]
 enum Op<N> {
     Set(N),
     Delete,
+}
+
+/// The status of an operation in the flush buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum Status {
+    // The operation is in the flush buffer and has not yet been processed by a flush worker.
+    Dirty = 0,
+    // The operation is currently being processed by a flush worker and since the flush worker
+    // picked it up, it has not been modified.
+    InProgress = 1,
+    // The operation is currently being processed by a flush worker, but since the flush worker
+    // picked it up, it has been modified.
+    InProgressDirty = 2,
+}
+
+/// An operation in the flush buffer along with its in-progress status.
+#[derive(Debug)]
+struct OpWithStatus<N> {
+    op: Op<N>,
+    #[allow(clippy::disallowed_types)]
+    status: StdAtomicU8,
+}
+
+impl<N> OpWithStatus<N> {
+    /// Creates a new `OpWithStatus` with the given operation and in-progress status set to dirty.
+    fn new(op: Op<N>) -> Self {
+        OpWithStatus {
+            op,
+            #[allow(clippy::disallowed_types)]
+            status: StdAtomicU8::new(Status::Dirty as u8),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -337,7 +426,7 @@ mod tests {
     #[test]
     fn get_returns_copy_of_node_if_present_as_set_op() {
         let storage = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -348,7 +437,9 @@ mod tests {
         let id = TestNodeId::from_idx_and_node_kind(0, TestNodeKind::NonEmpty1);
         let node = TestNode::NonEmpty1(Box::default());
 
-        storage.flush_buffer.insert(id, Op::Set(node.clone()));
+        storage
+            .flush_buffer
+            .insert(id, OpWithStatus::new(Op::Set(node.clone())));
 
         let result = storage.get(id).unwrap();
         assert_eq!(result, node);
@@ -359,7 +450,7 @@ mod tests {
     #[test]
     fn get_returns_not_found_error_if_id_is_present_as_delete_op() {
         let storage = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -368,7 +459,9 @@ mod tests {
         };
 
         let id = TestNodeId::from_idx_and_node_kind(0, TestNodeKind::NonEmpty1);
-        storage.flush_buffer.insert(id, Op::Delete);
+        storage
+            .flush_buffer
+            .insert(id, OpWithStatus::new(Op::Delete));
 
         let result = storage.get(id);
         assert!(matches!(
@@ -389,7 +482,7 @@ mod tests {
         });
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -413,7 +506,7 @@ mod tests {
             .returning(move |_| id);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -432,7 +525,7 @@ mod tests {
         let node = TestNode::NonEmpty1(Box::default());
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -445,7 +538,7 @@ mod tests {
         let entry = storage_with_flush_buffer.flush_buffer.get(&id);
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        let value = entry.value();
+        let value = &entry.value().op;
         assert!(matches!(value, Op::Set(n) if n == &node));
     }
 
@@ -454,7 +547,7 @@ mod tests {
         let id = TestNodeId::from_idx_and_node_kind(0, TestNodeKind::NonEmpty1);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(MockStorage::new()),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -467,7 +560,7 @@ mod tests {
         let entry = storage_with_flush_buffer.flush_buffer.get(&id);
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        let value = entry.value();
+        let value = &entry.value().op;
         assert!(matches!(value, Op::Delete));
     }
 
@@ -477,7 +570,7 @@ mod tests {
         mock_storage.expect_close().times(1).returning(|| Ok(()));
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -500,7 +593,7 @@ mod tests {
             .returning(|| Ok(1));
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -510,7 +603,7 @@ mod tests {
 
         storage_with_flush_buffer
             .flush_buffer
-            .insert(id, Op::Set(node.clone()));
+            .insert(id, OpWithStatus::new(Op::Set(node.clone())));
 
         let storage_with_flush_buffer = Arc::new(storage_with_flush_buffer);
 
@@ -559,7 +652,7 @@ mod tests {
             .times(1);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -586,7 +679,7 @@ mod tests {
             .times(1);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -612,7 +705,7 @@ mod tests {
             .times(1);
 
         let storage_with_flush_buffer = StorageWithFlushBuffer {
-            flush_buffer: Arc::new(SkipMap::new()),
+            flush_buffer: Arc::new(DashMap::new()),
             storage: Arc::new(mock_storage),
             flush_workers: FlushWorkers {
                 workers: Vec::new(),
@@ -628,7 +721,7 @@ mod tests {
 
     #[test]
     fn flush_workers_new_spawns_threads() {
-        let flush_buffer = Arc::new(SkipMap::new());
+        let flush_buffer = Arc::new(DashMap::new());
         let storage = Arc::new(MockStorage::new());
 
         let workers = FlushWorkers::new(&flush_buffer, &storage);
@@ -640,7 +733,7 @@ mod tests {
 
     #[test]
     fn flush_workers_task_calls_underlying_storage_layer_and_removes_elements_once_processed() {
-        let flush_buffer = Arc::new(SkipMap::new());
+        let flush_buffer = Arc::new(DashMap::new());
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let mut storage = MockStorage::new();
@@ -658,13 +751,13 @@ mod tests {
         let id = TestNodeId::from_idx_and_node_kind(0, TestNodeKind::NonEmpty1);
         let node = TestNode::NonEmpty1(Box::default());
 
-        flush_buffer.insert(id, Op::Set(node.clone()));
+        flush_buffer.insert(id, OpWithStatus::new(Op::Set(node.clone())));
 
         // Allow the worker to process the set operation
         thread::sleep(Duration::from_millis(100));
         assert!(flush_buffer.is_empty());
 
-        flush_buffer.insert(id, Op::Delete);
+        flush_buffer.insert(id, OpWithStatus::new(Op::Delete));
 
         // Allow the worker to process the delete operation
         thread::sleep(Duration::from_millis(100));
@@ -711,24 +804,153 @@ mod tests {
                 // Use an actual storage as mockall does not use shuttle sync primitives, which we
                 // need to ensure context switches between shuttle threads.
                 let storage = Arc::new(
-                    NodeFileStorage::<NonEmpty1TestNode, SeekFile>::open(
-                        &testdir,
-                        DbMode::ReadWrite,
-                    )
-                    .unwrap(),
+                    NodeFileStorage::<_, SeekFile>::open(&testdir, DbMode::ReadWrite).unwrap(),
                 );
                 let node = NonEmpty1TestNode::default();
                 let id = storage.reserve(&node);
                 storage.set(id, &node).unwrap();
 
-                let flush_buffer = Arc::new(SkipMap::new());
+                let flush_buffer = Arc::new(DashMap::new());
                 let workers = FlushWorkers::new(&flush_buffer, &storage.clone());
                 // This should call delete only once, and panic if two workers delete the same ID
-                flush_buffer.insert(id, Op::Delete);
+                flush_buffer.insert(id, OpWithStatus::new(Op::Delete));
 
                 workers.shutdown().unwrap();
             },
             100,
+        );
+    }
+
+    #[test]
+    fn shuttletest_deleted_nodes_are_not_found_when_queried() {
+        run_shuttle_check(
+            || {
+                let testdir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+                // Use an actual storage as mockall does not use shuttle sync primitives, which we
+                // need to ensure context switches between shuttle threads.
+                let storage = Arc::new(
+                    NodeFileStorage::<_, SeekFile>::open(&testdir, DbMode::ReadWrite).unwrap(),
+                );
+                let node = NonEmpty1TestNode::default();
+                let id = storage.reserve(&node);
+                storage.set(id, &node).unwrap();
+
+                let flush_buffer = Arc::new(DashMap::new());
+                let flush_workers = FlushWorkers::new(&flush_buffer, &storage);
+                let storage_with_flush_buffer = StorageWithFlushBuffer {
+                    flush_buffer,
+                    storage,
+                    flush_workers,
+                };
+
+                // Delete the `node` with `id`, which adds a delete op to the flush buffer.
+                // The actual deleting happens asynchronously in the flush worker.
+                storage_with_flush_buffer.delete(id).unwrap();
+
+                // Either the delete op is still in the flush buffer or the node has been deleted in
+                // the underlying storage layer.
+                thread::yield_now();
+                assert_eq!(
+                    storage_with_flush_buffer
+                        .get(id)
+                        .map_err(BTError::into_inner),
+                    Err(Error::NotFound)
+                );
+
+                storage_with_flush_buffer.flush_workers.shutdown().unwrap();
+            },
+            1000,
+        );
+    }
+
+    #[test]
+    fn shuttletest_newest_set_is_seen_when_queried() {
+        run_shuttle_check(
+            || {
+                let testdir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+                // Use an actual storage as mockall does not use shuttle sync primitives, which we
+                // need to ensure context switches between shuttle threads.
+                let storage = Arc::new(
+                    NodeFileStorage::<_, SeekFile>::open(&testdir, DbMode::ReadWrite).unwrap(),
+                );
+                let node = NonEmpty1TestNode::default();
+                let id = storage.reserve(&node);
+                storage.set(id, &node).unwrap();
+
+                let flush_buffer = Arc::new(DashMap::new());
+                let flush_workers = FlushWorkers::new(&flush_buffer, &storage);
+                let storage_with_flush_buffer = StorageWithFlushBuffer {
+                    flush_buffer,
+                    storage,
+                    flush_workers,
+                };
+
+                let mut node2 = node.clone();
+                node2.0 = [1; _];
+
+                // Update the node with `id` to `node2`, which adds a set op to the flush buffer.
+                // The actual write out happens asynchronously in the flush worker.
+                storage_with_flush_buffer.set(id, &node2).unwrap();
+
+                // Either the set op is still in the flush buffer or the node has been updated in
+                // the underlying storage layer.
+                thread::yield_now();
+                assert_eq!(storage_with_flush_buffer.get(id), Ok(node2));
+
+                storage_with_flush_buffer.flush_workers.shutdown().unwrap();
+            },
+            1000,
+        );
+    }
+
+    #[test]
+    fn shuttletest_operations_dont_get_lost_when_inserted_while_old_operation_is_processed() {
+        run_shuttle_check(
+            || {
+                let testdir = TestDir::try_new(Permissions::ReadWrite).unwrap();
+                // Use an actual storage as mockall does not use shuttle sync primitives, which we
+                // need to ensure context switches between shuttle threads.
+                let storage = Arc::new(
+                    NodeFileStorage::<_, SeekFile>::open(&testdir, DbMode::ReadWrite).unwrap(),
+                );
+                let node = NonEmpty1TestNode::default();
+                let id = storage.reserve(&node);
+                storage.set(id, &node).unwrap();
+
+                let flush_buffer = Arc::new(DashMap::new());
+                let flush_workers = FlushWorkers::new(&flush_buffer, &storage);
+                let storage_with_flush_buffer = StorageWithFlushBuffer {
+                    flush_buffer,
+                    storage,
+                    flush_workers,
+                };
+
+                let mut node2 = node.clone();
+                node2.0 = [1; _];
+
+                // Update the node with `id` to `node2`, which adds a set op to the flush buffer.
+                // The actual write out happens asynchronously in the flush worker.
+                storage_with_flush_buffer.set(id, &node2).unwrap();
+
+                let mut node3 = node.clone();
+                node3.0 = [2; _];
+
+                // Update the node with `id` to `node3`, which adds a set op to the flush buffer.
+                // The actual write out happens asynchronously in the flush worker.
+                thread::yield_now();
+                storage_with_flush_buffer.set(id, &node3).unwrap();
+
+                // Either the first set op was still in the flush buffer when the second set op was
+                // inserted and then overwritten by it or first set op was processed and removed and
+                // the second set op was inserted after that.
+                // The second set op is then either still in the flush buffer or the node has been
+                // updated to `node3` in the underlying storage layer.
+                thread::yield_now();
+                assert_eq!(storage_with_flush_buffer.get(id), Ok(node3));
+
+                storage_with_flush_buffer.flush_workers.shutdown().unwrap();
+            },
+            1000,
         );
     }
 
