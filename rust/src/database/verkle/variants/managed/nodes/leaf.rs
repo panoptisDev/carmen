@@ -134,7 +134,7 @@ impl ManagedTrieNode for FullLeafNode {
                 })
                 .sum::<usize>()
                 + 1;
-            let dirty_index = self.commitment.is_dirty().then_some(index);
+            let dirty_index = (!self.commitment.is_clean()).then_some(index);
             let inner = make_smallest_inner_node_for(
                 slots,
                 &[self_child],
@@ -220,7 +220,7 @@ mod tests {
                 // We deliberately only create a default commitment, since this type does
                 // not preserve all of its fields when converting to/from on-disk representation.
                 let mut commitment = VerkleCommitment::default();
-                commitment.test_only_mark_as_initialized();
+                commitment.test_only_mark_as_clean();
                 commitment
             },
         };
@@ -307,8 +307,8 @@ mod tests {
         #[values(true, false)] leaf_is_dirty: bool,
     ) {
         let mut commitment = VerkleCommitment::default();
-        if leaf_is_dirty {
-            commitment.store(123, Value::from_index_values(99, &[]));
+        if !leaf_is_dirty {
+            commitment.test_only_mark_as_clean();
         }
         let stem = [42; 31];
         let node = FullLeafNode {
