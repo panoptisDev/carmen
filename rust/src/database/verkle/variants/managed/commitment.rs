@@ -110,7 +110,7 @@ impl VerkleCommitment {
     }
 
     /// Marks the commitment as clean.
-    pub fn mark_clean(&mut self) {
+    fn mark_clean(&mut self) {
         match self {
             VerkleCommitment::Inner(inner) => inner.mark_clean(),
             VerkleCommitment::Leaf(leaf) => leaf.mark_clean(),
@@ -137,20 +137,17 @@ impl TrieCommitment for VerkleCommitment {
 /// The status of the commitment, indicating if and how it needs to be recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CommitmentStatus {
-    /// The commitment has never been computed.
+    /// The commitment requires a full recomputation over all children/values.
     ///
-    /// For leaf commitments, this is the same as being dirty.
+    /// Leaf commitments are in this state the first time they are modified after having been
+    /// restored from disk.
     ///
-    /// For inner commitments, this means a full computation is required (no point-wise updates).
-    /// Not being initialized does not imply the commitment being zero,
-    /// as it may have been created from an existing commitment using
-    /// [`VerkleInnerCommitment::from_leaf`].
-    Uninitialized,
+    /// Inner commitments are in this state when created using [`VerkleInnerCommitment::from_leaf`].
+    RequiresRecompute,
 
-    /// The commitment has been computed at least once, but the node or its children have been
-    /// modified since. Point-wise updates over dirty children can be used to update the
-    /// commitment.
-    Dirty,
+    /// The children/values of the node have been modified since the last commitment computation.
+    /// Point-wise updates over dirty children/values can be used to update the commitment.
+    RequiresUpdate,
 
     /// The commitment is up-to-date.
     Clean,
@@ -173,7 +170,7 @@ pub struct VerkleInnerCommitment {
 
 impl VerkleInnerCommitment {
     /// Creates a new commitment that is meant to replace an existing commitment at a certain
-    /// position within the trie. The new commitment is considered to be clean and uninitialized,
+    /// position within the trie. The new commitment requires a full recomputation,
     /// however copies the existing commitment value. This allows to compute the delta between
     /// the commitment that used to be stored at this position, and the new commitment after
     /// it has been initialized.
@@ -196,8 +193,8 @@ impl VerkleInnerCommitment {
         }
         VerkleInnerCommitment {
             commitment: existing.commitment,
+            status: CommitmentStatus::RequiresRecompute,
             changed_indices,
-            ..Default::default()
         }
     }
 
@@ -223,7 +220,7 @@ impl Default for VerkleInnerCommitment {
     fn default() -> Self {
         Self {
             commitment: Commitment::default(),
-            status: CommitmentStatus::Uninitialized,
+            status: CommitmentStatus::Clean,
             changed_indices: [0u8; 256 / 8],
         }
     }
@@ -233,7 +230,7 @@ impl TrieCommitment for VerkleInnerCommitment {
     fn modify_child(&mut self, index: usize) {
         self.changed_indices[index / 8] |= 1 << (index % 8);
         if self.status == CommitmentStatus::Clean {
-            self.status = CommitmentStatus::Dirty;
+            self.status = CommitmentStatus::RequiresUpdate;
         }
     }
 
@@ -288,9 +285,6 @@ pub struct VerkleLeafCommitment {
     changed_indices: [u8; 256 / 8],
 
     /// The two partial commitments used as part of the leaf commitment computation.
-    // TODO: Instead of storing these, consider doing a full commitment recomputation
-    // after loading a leaf from disk.
-    // See https://github.com/0xsoniclabs/sonic-admin/issues/373
     c1: Commitment,
     c2: Commitment,
 
@@ -324,7 +318,7 @@ impl Default for VerkleLeafCommitment {
         Self {
             commitment: Commitment::default(),
             committed_used_indices: [0u8; 256 / 8],
-            status: CommitmentStatus::Uninitialized,
+            status: CommitmentStatus::Clean,
             c1: Commitment::default(),
             c2: Commitment::default(),
             committed_values: [Value::default(); 256],
@@ -345,7 +339,16 @@ impl TrieCommitment for VerkleLeafCommitment {
             self.changed_indices[index / 8] |= 1 << (index % 8);
             self.committed_values[index] = prev;
             if self.status == CommitmentStatus::Clean {
-                self.status = CommitmentStatus::Dirty;
+                if self.c1 == Commitment::default()
+                    && self.c2 == Commitment::default()
+                    && self.commitment != Commitment::default()
+                {
+                    // If both C1 and C2 are default but the commitment is not, this means
+                    // the node has been restored from disk and we need a full recomputation.
+                    self.status = CommitmentStatus::RequiresRecompute;
+                } else {
+                    self.status = CommitmentStatus::RequiresUpdate;
+                }
             }
         }
     }
@@ -356,11 +359,6 @@ impl TrieCommitment for VerkleLeafCommitment {
 pub struct OnDiskVerkleLeafCommitment {
     commitment: [u8; 32],
     committed_used_indices: [u8; 256 / 8],
-    // TODO: Instead of storing these, consider doing a full commitment recomputation
-    // after loading a leaf from disk.
-    // See https://github.com/0xsoniclabs/sonic-admin/issues/373
-    c1: [u8; 32],
-    c2: [u8; 32],
 }
 
 impl TryFrom<OnDiskVerkleLeafCommitment> for VerkleLeafCommitment {
@@ -370,9 +368,12 @@ impl TryFrom<OnDiskVerkleLeafCommitment> for VerkleLeafCommitment {
         Ok(VerkleLeafCommitment {
             commitment: Commitment::try_from_bytes(odvc.commitment)?,
             committed_used_indices: odvc.committed_used_indices,
-            c1: Commitment::try_from_bytes(odvc.c1)?,
-            c2: Commitment::try_from_bytes(odvc.c2)?,
+            // We restore the commitment in a clean status, although it will require
+            // a full recomputation once a value is modified. The status is set
+            // accordingly in `VerkleLeafCommitment::store`.
             status: CommitmentStatus::Clean,
+            c1: Commitment::default(),
+            c2: Commitment::default(),
             committed_values: [Value::default(); 256],
             changed_indices: [0u8; 256 / 8],
         })
@@ -386,8 +387,6 @@ impl From<&VerkleLeafCommitment> for OnDiskVerkleLeafCommitment {
         OnDiskVerkleLeafCommitment {
             commitment: value.commitment.compress(),
             committed_used_indices: value.committed_used_indices,
-            c1: value.c1.compress(),
-            c2: value.c2.compress(),
         }
     }
 }
@@ -434,6 +433,26 @@ pub fn update_commitments(
                     let _span = tracy_client::span!("leaf node");
                     let vc = vc.as_leaf()?;
 
+                    // If this commitment was just restored from disk, C1 and C2 are default
+                    // initialized and we need to do a full recomputation over all values.
+                    if vc.status == CommitmentStatus::RequiresRecompute {
+                        // `compute_leaf_node_commitment` bases its decision on whether to do a
+                        // full computation or point-wise updates on whether the existing
+                        // commitment is default or not.
+                        vc.commitment = Commitment::default();
+
+                        // Reset committed values to default, since we want to compute the delta
+                        // against zero.
+                        vc.committed_values = [Value::default(); 256];
+
+                        // Mark all previously committed indices as changed, since we need to
+                        // commit to them again regardless of their value (could be zero).
+                        for (i, indices) in vc.changed_indices.iter_mut().enumerate() {
+                            *indices |= vc.committed_used_indices[i];
+                        }
+                        vc.committed_used_indices.fill(0);
+                    }
+
                     compute_leaf_node_commitment(
                         vc.changed_indices,
                         &vc.committed_values,
@@ -451,7 +470,7 @@ pub fn update_commitments(
 
                     let mut scalars = [Scalar::zero(); 256];
                     for (i, child_id) in children.iter().enumerate() {
-                        if vc.status == CommitmentStatus::Uninitialized {
+                        if vc.status == CommitmentStatus::RequiresRecompute {
                             if !child_id.is_empty_id() {
                                 scalars[i] = manager
                                     .get_read_access(*child_id)?
@@ -475,7 +494,7 @@ pub fn update_commitments(
                         );
                     }
 
-                    if vc.status == CommitmentStatus::Uninitialized {
+                    if vc.status == CommitmentStatus::RequiresRecompute {
                         vc.commitment = Commitment::new(&scalars);
                     }
                 }
@@ -509,7 +528,7 @@ mod tests {
         let original = VerkleLeafCommitment {
             commitment: Commitment::new(&[Scalar::from(42), Scalar::from(33)]),
             committed_used_indices: [1u8; 256 / 8],
-            status: CommitmentStatus::Dirty,
+            status: CommitmentStatus::RequiresUpdate,
             changed_indices: [7u8; 256 / 8],
             c1: Commitment::new(&[Scalar::from(7)]),
             c2: Commitment::new(&[Scalar::from(11)]),
@@ -518,7 +537,7 @@ mod tests {
 
         let new = VerkleInnerCommitment::from_leaf(&original, None);
         assert_eq!(new.commitment, original.commitment);
-        assert_eq!(new.status, CommitmentStatus::Uninitialized);
+        assert_eq!(new.status, CommitmentStatus::RequiresRecompute);
         assert_eq!(new.changed_indices, [0u8; 256 / 8]);
 
         let new = VerkleInnerCommitment::from_leaf(&original, Some(10));
@@ -552,13 +571,13 @@ mod tests {
         assert!(vc.is_clean());
 
         let vc = VerkleCommitment::Inner(VerkleInnerCommitment {
-            status: CommitmentStatus::Uninitialized,
+            status: CommitmentStatus::RequiresRecompute,
             ..Default::default()
         });
         assert!(!vc.is_clean());
 
         let vc = VerkleCommitment::Inner(VerkleInnerCommitment {
-            status: CommitmentStatus::Dirty,
+            status: CommitmentStatus::RequiresUpdate,
             ..Default::default()
         });
         assert!(!vc.is_clean());
@@ -570,13 +589,13 @@ mod tests {
         assert!(vc.is_clean());
 
         let vc = VerkleCommitment::Leaf(VerkleLeafCommitment {
-            status: CommitmentStatus::Uninitialized,
+            status: CommitmentStatus::RequiresRecompute,
             ..Default::default()
         });
         assert!(!vc.is_clean());
 
         let vc = VerkleCommitment::Leaf(VerkleLeafCommitment {
-            status: CommitmentStatus::Dirty,
+            status: CommitmentStatus::RequiresUpdate,
             ..Default::default()
         });
         assert!(!vc.is_clean());
@@ -655,8 +674,8 @@ mod tests {
     #[rstest::rstest]
     fn verkle_commitment_modify_child_marks_dirty_and_changed(
         #[values(
-            CommitmentStatus::Uninitialized,
-            CommitmentStatus::Dirty,
+            CommitmentStatus::RequiresRecompute,
+            CommitmentStatus::RequiresUpdate,
             CommitmentStatus::Clean
         )]
         initial_status: CommitmentStatus,
@@ -667,10 +686,10 @@ mod tests {
         });
         vc.modify_child(42);
         let vc = vc.into_inner().unwrap();
-        if initial_status == CommitmentStatus::Uninitialized {
-            assert_eq!(vc.status, CommitmentStatus::Uninitialized);
+        if initial_status == CommitmentStatus::RequiresRecompute {
+            assert_eq!(vc.status, CommitmentStatus::RequiresRecompute);
         } else {
-            assert_eq!(vc.status, CommitmentStatus::Dirty);
+            assert_eq!(vc.status, CommitmentStatus::RequiresUpdate);
         }
         for i in 0..256 {
             assert_eq!(vc.changed_indices[i / 8] & (1 << (i % 8)) != 0, i == 42);
@@ -680,22 +699,31 @@ mod tests {
     #[rstest::rstest]
     fn verkle_commitment_store_marks_dirty_and_changed(
         #[values(
-            CommitmentStatus::Uninitialized,
-            CommitmentStatus::Dirty,
+            CommitmentStatus::RequiresRecompute,
+            CommitmentStatus::RequiresUpdate,
             CommitmentStatus::Clean
         )]
         initial_status: CommitmentStatus,
+        #[values(
+            Commitment::default(),
+            Commitment::new(&[Scalar::from(42)])
+        )]
+        c1: Commitment,
     ) {
         let mut vc = VerkleCommitment::Leaf(VerkleLeafCommitment {
+            commitment: Commitment::new(&[Scalar::from(7)]),
             status: initial_status,
+            c1,
             ..Default::default()
         });
         vc.store(42, [0u8; 32]);
         let vc = vc.into_leaf().unwrap();
-        if initial_status == CommitmentStatus::Uninitialized {
-            assert_eq!(vc.status, CommitmentStatus::Uninitialized);
+        if initial_status == CommitmentStatus::RequiresRecompute
+            || (initial_status == CommitmentStatus::Clean && c1 == Commitment::default())
+        {
+            assert_eq!(vc.status, CommitmentStatus::RequiresRecompute);
         } else {
-            assert_eq!(vc.status, CommitmentStatus::Dirty);
+            assert_eq!(vc.status, CommitmentStatus::RequiresUpdate);
         }
         for i in 0..256 {
             assert_eq!(vc.changed_indices[i / 8] & (1 << (i % 8)) != 0, i == 42);
@@ -713,10 +741,10 @@ mod tests {
     }
 
     #[test]
-    fn verkle_inner_commitment_default_returns_uninitialized_commitment() {
+    fn verkle_inner_commitment_default_returns_clean_empty_commitment() {
         let vc = VerkleInnerCommitment::default();
         assert_eq!(vc.commitment, Commitment::default());
-        assert_eq!(vc.status, CommitmentStatus::Uninitialized);
+        assert_eq!(vc.status, CommitmentStatus::Clean);
         assert_eq!(vc.changed_indices, [0u8; 256 / 8]);
     }
 
@@ -761,11 +789,11 @@ mod tests {
     }
 
     #[test]
-    fn verkle_leaf_commitment_default_returns_uninitialized_commitment() {
+    fn verkle_leaf_commitment_default_returns_clean_empty_commitment() {
         let vc = VerkleLeafCommitment::default();
         assert_eq!(vc.commitment, Commitment::default());
         assert_eq!(vc.committed_used_indices, [0u8; 256 / 8]);
-        assert_eq!(vc.status, CommitmentStatus::Uninitialized);
+        assert_eq!(vc.status, CommitmentStatus::Clean);
         assert_eq!(vc.changed_indices, [0u8; 256 / 8]);
         assert_eq!(vc.c1, Commitment::default());
         assert_eq!(vc.c2, Commitment::default());
@@ -799,9 +827,6 @@ mod tests {
             VerkleLeafCommitment {
                 commitment: original.commitment,
                 committed_used_indices: original.committed_used_indices,
-                c1: original.c1,
-                c2: original.c2,
-                status: CommitmentStatus::Clean,
                 // The remaining fields are not preserved on disk
                 ..Default::default()
             }
@@ -810,37 +835,11 @@ mod tests {
 
     #[test]
     fn converting_on_disk_verkle_leaf_commitment_with_invalid_bytes_fails() {
-        let invalid_c = OnDiskVerkleLeafCommitment {
+        let invalid = OnDiskVerkleLeafCommitment {
             commitment: [0x01; 32],
             committed_used_indices: [0u8; 256 / 8],
-            c1: [0x00; 32],
-            c2: [0x00; 32],
         };
-        let result: BTResult<VerkleLeafCommitment, Error> = invalid_c.try_into();
-        assert!(matches!(
-            result.map_err(BTError::into_inner),
-            Err(Error::CorruptedState(_))
-        ));
-
-        let invalid_c1 = OnDiskVerkleLeafCommitment {
-            commitment: [0x00; 32],
-            committed_used_indices: [0u8; 256 / 8],
-            c1: [0x01; 32],
-            c2: [0x00; 32],
-        };
-        let result: BTResult<VerkleLeafCommitment, Error> = invalid_c1.try_into();
-        assert!(matches!(
-            result.map_err(BTError::into_inner),
-            Err(Error::CorruptedState(_))
-        ));
-
-        let invalid_c2 = OnDiskVerkleLeafCommitment {
-            commitment: [0x00; 32],
-            committed_used_indices: [0u8; 256 / 8],
-            c1: [0x00; 32],
-            c2: [0x01; 32],
-        };
-        let result: BTResult<VerkleLeafCommitment, Error> = invalid_c2.try_into();
+        let result: BTResult<VerkleLeafCommitment, Error> = invalid.try_into();
         assert!(matches!(
             result.map_err(BTError::into_inner),
             Err(Error::CorruptedState(_))
@@ -963,5 +962,101 @@ mod tests {
         }
 
         assert_eq!(log.count(), 0);
+    }
+
+    #[test]
+    fn update_commitments_correctly_handles_leaf_commitments_restored_from_disk() {
+        let stem = <[u8; 31]>::from_index_values(33, &[(0, 7), (1, 4)]);
+
+        let set_value = |node: &mut FullLeafNode, index: u8, value: u8| {
+            let value = [value; 32];
+            let update = KeyedUpdate::FullSlot {
+                key: [&stem[..], &[index]].concat().try_into().unwrap(),
+                value,
+            };
+            node.store(&update).unwrap();
+            node.commitment.store(index as usize, value);
+        };
+        let set_value_1 = |node: &mut FullLeafNode| set_value(node, 42, 7);
+        let set_value_2 = |node: &mut FullLeafNode| set_value(node, 13, 3);
+
+        let expected_commitment = {
+            let mut leaf = FullLeafNode {
+                stem,
+                ..Default::default()
+            };
+            set_value_1(&mut leaf);
+            set_value_2(&mut leaf);
+            let mut vc = leaf.commitment;
+            compute_leaf_node_commitment(
+                vc.changed_indices,
+                &[Value::default(); 256],
+                &leaf.values,
+                &leaf.stem,
+                &mut vc.committed_used_indices,
+                &mut vc.c1,
+                &mut vc.c2,
+                &mut vc.commitment,
+            );
+            vc
+        };
+
+        let original_leaf = {
+            let mut leaf = FullLeafNode {
+                stem,
+                ..Default::default()
+            };
+            set_value_1(&mut leaf); // Only set the first value
+            let mut vc = leaf.commitment;
+            compute_leaf_node_commitment(
+                vc.changed_indices,
+                &[Value::default(); 256],
+                &leaf.values,
+                &leaf.stem,
+                &mut vc.committed_used_indices,
+                &mut vc.c1,
+                &mut vc.c2,
+                &mut vc.commitment,
+            );
+            vc.status = CommitmentStatus::Clean;
+            leaf.commitment = vc;
+            leaf
+        };
+
+        let on_disk_leaf = original_leaf.to_disk_repr();
+        let mut restored_leaf: FullLeafNode = FullLeafNode::from_disk_repr(|buf| {
+            buf.copy_from_slice(&on_disk_leaf);
+            Ok(())
+        })
+        .unwrap();
+
+        set_value_2(&mut restored_leaf); // Now set the second value
+
+        let manager = InMemoryNodeManager::<VerkleNodeId, VerkleNode>::new(10);
+        let log = TrieUpdateLog::<VerkleNodeId>::new();
+
+        let leaf_id = manager
+            .add(VerkleNode::Leaf256(Box::new(restored_leaf)))
+            .unwrap();
+        log.mark_dirty(0, leaf_id);
+        update_commitments(&log, &manager).unwrap();
+
+        let leaf_node_commitment = manager
+            .get_read_access(leaf_id)
+            .unwrap()
+            .get_commitment()
+            .into_leaf()
+            .unwrap();
+
+        assert_eq!(leaf_node_commitment.c1, expected_commitment.c1);
+        assert_eq!(leaf_node_commitment.c2, expected_commitment.c2);
+        assert_eq!(
+            leaf_node_commitment.commitment,
+            expected_commitment.commitment
+        );
+        assert_eq!(
+            leaf_node_commitment.committed_used_indices,
+            expected_commitment.committed_used_indices
+        );
     }
 }

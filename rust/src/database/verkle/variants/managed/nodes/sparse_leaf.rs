@@ -360,13 +360,9 @@ mod tests {
     #[test]
     fn can_be_converted_to_and_from_on_disk_representation() {
         let mut original_node = make_leaf::<99>();
-        original_node.commitment = {
-            // We deliberately only create a default commitment, since this type does
-            // not preserve all of its fields when converting to/from on-disk representation.
-            let mut commitment = VerkleLeafCommitment::default();
-            commitment.mark_clean();
-            commitment
-        };
+        // We deliberately only create a default commitment, since this type does
+        // not preserve all of its fields when converting to/from on-disk representation.
+        original_node.commitment = VerkleLeafCommitment::default();
         let disk_repr = original_node.to_disk_repr();
         let deserialized_node = SparseLeafNode::<99>::from_disk_repr(|buf| {
             buf.copy_from_slice(&disk_repr);
@@ -556,8 +552,8 @@ mod tests {
         #[values(true, false)] leaf_is_dirty: bool,
     ) {
         let mut commitment = VerkleLeafCommitment::default();
-        if !leaf_is_dirty {
-            commitment.mark_clean();
+        if leaf_is_dirty {
+            commitment.store(5, [0u8; 32]); // Arbitrary
         }
         node.set_commitment(VerkleCommitment::Leaf(commitment))
             .unwrap();
