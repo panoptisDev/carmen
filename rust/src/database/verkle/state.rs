@@ -225,6 +225,17 @@ impl<T: VerkleTrie> CarmenState for VerkleTrieCarmenState<T> {
             self.trie.store(&update, block_height.is_archive())?;
         }
         self.trie.after_update(block)?;
+
+        // We currently always compute the state root hash at the end of an update to ensure that
+        // managed trie nodes can be flushed to disk. This is particularly important for archives,
+        // where computing the commitment sporadically does not necessarily update the commitments
+        // of nodes from earlier block heights (this depends on which commitment update
+        // implementation is being used).
+        // TODO: We may want to allow skipping or delaying the hash computation for faster sync-in.
+        //       See https://github.com/0xsoniclabs/sonic-admin/issues/558
+        //       and https://github.com/0xsoniclabs/sonic-admin/issues/560
+        self.get_hash()?;
+
         Ok(())
     }
 }
@@ -236,7 +247,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        database::verkle::{test_utils::FromIndexValues, verkle_trie::MockVerkleTrie},
+        database::verkle::{
+            crypto::Commitment, test_utils::FromIndexValues, verkle_trie::MockVerkleTrie,
+        },
         error::BTError,
         node_manager::in_memory_node_manager::InMemoryNodeManager,
         types::{BalanceUpdate, CodeUpdate, NonceUpdate, SlotUpdate},
@@ -848,6 +861,9 @@ mod tests {
             .with(eq(block_height))
             .times(1)
             .returning(|_| Ok(()));
+        trie.expect_commit()
+            .times(1)
+            .returning(|| Ok(Commitment::default()));
         let state = VerkleTrieCarmenState {
             trie,
             embedding: VerkleTrieEmbedding::new(),
