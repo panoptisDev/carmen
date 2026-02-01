@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -11,9 +11,9 @@
 package file
 
 import (
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree/htfile"
-	"github.com/0xsoniclabs/carmen/go/backend/store"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend/hashtree/htfile"
+	"github.com/panoptisDev/carmen/go/backend/store"
+	"github.com/panoptisDev/carmen/go/common"
 	"io"
 	"os"
 	"testing"

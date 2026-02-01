@@ -66,7 +66,7 @@ Options:
 
 ## Carmen & Bertha Integration
 
-[Bertha](https://github.com/0xsoniclabs/bertha) can be used to replay the history with Carmen.
+[Bertha](https://github.com/panoptisDev/bertha) can be used to replay the history with Carmen.
 This can be used for multiple purposes including testing and profiling.
 
 Bertha provides wrapper scripts to run with a local Carmen repository and optionally enable Tracy profiling: `go-run-with-carmen.sh` and `go-run-with-carmen-and-tracy.sh` which can be found in `bertha/block-db-go-bindings`.

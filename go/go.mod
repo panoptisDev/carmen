@@ -1,19 +1,19 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
 // On the date above, in accordance with the Business Source License, use of
 // this software will be governed by the GNU Lesser General Public License v3.
 
-module github.com/0xsoniclabs/carmen/go
+module github.com/panoptisDev/carmen/go
 
 go 1.24.2
 
 require (
-	github.com/0xsoniclabs/tracy v0.0.0-20251027125423-00a5ab7968fb
+	github.com/panoptisDev/tracy v0.0.0-20251027125423-00a5ab7968fb
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/ethereum/go-verkle v0.2.2

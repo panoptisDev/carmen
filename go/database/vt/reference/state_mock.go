@@ -12,8 +12,8 @@ package reference
 import (
 	reflect "reflect"
 
-	commit "github.com/0xsoniclabs/carmen/go/database/vt/commit"
-	trie "github.com/0xsoniclabs/carmen/go/database/vt/reference/trie"
+	commit "github.com/panoptisDev/carmen/go/database/vt/commit"
+	trie "github.com/panoptisDev/carmen/go/database/vt/reference/trie"
 	gomock "go.uber.org/mock/gomock"
 )
 

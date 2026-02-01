@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -18,8 +18,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
+	"github.com/panoptisDev/carmen/go/carmen"
+	"github.com/panoptisDev/carmen/go/database/mpt/io"
 	"golang.org/x/exp/maps"
 )
 

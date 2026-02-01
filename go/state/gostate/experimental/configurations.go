@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -11,11 +11,11 @@
 package experimental
 
 import (
-	"github.com/0xsoniclabs/carmen/go/database/flat"
-	vtgeth "github.com/0xsoniclabs/carmen/go/database/vt/geth"
-	vtmemory "github.com/0xsoniclabs/carmen/go/database/vt/memory"
-	vtref "github.com/0xsoniclabs/carmen/go/database/vt/reference"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/database/flat"
+	vtgeth "github.com/panoptisDev/carmen/go/database/vt/geth"
+	vtmemory "github.com/panoptisDev/carmen/go/database/vt/memory"
+	vtref "github.com/panoptisDev/carmen/go/database/vt/reference"
+	"github.com/panoptisDev/carmen/go/state"
 )
 
 // configurations contains the experimental state configurations.

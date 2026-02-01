@@ -13,11 +13,11 @@ import (
 	io "io"
 	reflect "reflect"
 
-	common "github.com/0xsoniclabs/carmen/go/common"
-	amount "github.com/0xsoniclabs/carmen/go/common/amount"
-	future "github.com/0xsoniclabs/carmen/go/common/future"
-	result "github.com/0xsoniclabs/carmen/go/common/result"
-	witness "github.com/0xsoniclabs/carmen/go/common/witness"
+	common "github.com/panoptisDev/carmen/go/common"
+	amount "github.com/panoptisDev/carmen/go/common/amount"
+	future "github.com/panoptisDev/carmen/go/common/future"
+	result "github.com/panoptisDev/carmen/go/common/result"
+	witness "github.com/panoptisDev/carmen/go/common/witness"
 	gomock "go.uber.org/mock/gomock"
 )
 

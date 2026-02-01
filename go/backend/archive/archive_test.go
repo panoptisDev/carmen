@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -17,14 +17,14 @@ import (
 	"io"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/backend"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/database/mpt"
+	"github.com/panoptisDev/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/database/mpt"
 
-	"github.com/0xsoniclabs/carmen/go/backend/archive"
-	"github.com/0xsoniclabs/carmen/go/backend/archive/ldb"
-	"github.com/0xsoniclabs/carmen/go/backend/archive/sqlite"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend/archive"
+	"github.com/panoptisDev/carmen/go/backend/archive/ldb"
+	"github.com/panoptisDev/carmen/go/backend/archive/sqlite"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 type archiveFactory struct {

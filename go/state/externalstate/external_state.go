@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -31,14 +31,14 @@ import (
 	"path/filepath"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/common/future"
-	"github.com/0xsoniclabs/carmen/go/common/result"
-	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/panoptisDev/carmen/go/common/future"
+	"github.com/panoptisDev/carmen/go/common/result"
+	"github.com/panoptisDev/carmen/go/common/witness"
 
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/state"
 
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 const codeCacheSize = 8_000 // ~ 200 MiB of memory for go-side code cache

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -19,10 +19,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/common/interrupt"
-	"github.com/0xsoniclabs/carmen/go/database/mpt"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/common/interrupt"
+	"github.com/panoptisDev/carmen/go/database/mpt"
 )
 
 //go:generate mockgen -source live.go -destination live_mocks.go -package io

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -17,10 +17,10 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/backend/utils"
+	"github.com/panoptisDev/carmen/go/backend/utils"
 
-	"github.com/0xsoniclabs/carmen/go/backend/stock"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend/stock"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 // stackBufferSize a constant defining the batch size of elements buffered in

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -21,12 +21,12 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/diagnostics"
-	"github.com/0xsoniclabs/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/diagnostics"
+	"github.com/panoptisDev/carmen/go/state"
 	"github.com/urfave/cli/v2"
 
-	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
+	_ "github.com/panoptisDev/carmen/go/state/gostate"
 )
 
 var Benchmark = cli.Command{

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -17,7 +17,7 @@ package experimental
 //
 // To enable those features, import this package into your project as follows:
 //
-//  import _ "github.com/0xsoniclabs/carmen/go/experimental"
+//  import _ "github.com/panoptisDev/carmen/go/experimental"
 //
 // As a side-effect, additional packages implementing experimental features are
 // imported into your project. Some of those, like the C++ and Rust based DB
@@ -30,6 +30,6 @@ package experimental
 // experimental features may be unstable and could lead to unexpected behavior.
 
 import (
-	_ "github.com/0xsoniclabs/carmen/go/state/externalstate"
-	_ "github.com/0xsoniclabs/carmen/go/state/gostate/experimental"
+	_ "github.com/panoptisDev/carmen/go/state/externalstate"
+	_ "github.com/panoptisDev/carmen/go/state/gostate/experimental"
 )

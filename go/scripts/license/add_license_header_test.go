@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -65,9 +65,9 @@ func Test_Replaces_OldLicenseHeader(t *testing.T) {
 
 	tmpFileName := filepath.Join(t.TempDir(), "test_license.go")
 	// write a sample license header to the file
-	oldLicense := `Copyright 2024 Sonic Operations Ltd
+	oldLicense := `Copyright 2024 Pano Operations Ltd
 				   This file is part of some old version
-				   of the Sonic Client`
+				   of the Pano Client`
 	require.NoError(t,
 		os.WriteFile(
 			tmpFileName,

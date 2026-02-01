@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -22,10 +22,10 @@ package witness
 import (
 	reflect "reflect"
 
-	common "github.com/0xsoniclabs/carmen/go/common"
-	amount "github.com/0xsoniclabs/carmen/go/common/amount"
-	immutable "github.com/0xsoniclabs/carmen/go/common/immutable"
-	tribool "github.com/0xsoniclabs/carmen/go/common/tribool"
+	common "github.com/panoptisDev/carmen/go/common"
+	amount "github.com/panoptisDev/carmen/go/common/amount"
+	immutable "github.com/panoptisDev/carmen/go/common/immutable"
+	tribool "github.com/panoptisDev/carmen/go/common/tribool"
 	gomock "go.uber.org/mock/gomock"
 )
 

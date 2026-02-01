@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -23,14 +23,14 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/0xsoniclabs/carmen/go/backend/archive"
-	"github.com/0xsoniclabs/carmen/go/backend/stock/file"
-	"github.com/0xsoniclabs/carmen/go/backend/utils"
-	"github.com/0xsoniclabs/carmen/go/backend/utils/checkpoint"
-	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/panoptisDev/carmen/go/backend/archive"
+	"github.com/panoptisDev/carmen/go/backend/stock/file"
+	"github.com/panoptisDev/carmen/go/backend/utils"
+	"github.com/panoptisDev/carmen/go/backend/utils/checkpoint"
+	"github.com/panoptisDev/carmen/go/common/witness"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
 )
 
 // ArchiveTrie retains a per-block history of the state trie. Each state is

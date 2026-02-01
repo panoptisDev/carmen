@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -20,14 +20,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/common/amount"
-	"github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/carmen/go/state/gostate"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/common/amount"
+	"github.com/panoptisDev/carmen/go/state"
+	"github.com/panoptisDev/carmen/go/state/gostate"
 	"golang.org/x/exp/maps"
 
-	_ "github.com/0xsoniclabs/carmen/go/state/externalstate"
-	_ "github.com/0xsoniclabs/carmen/go/state/gostate/experimental"
+	_ "github.com/panoptisDev/carmen/go/state/externalstate"
+	_ "github.com/panoptisDev/carmen/go/state/gostate/experimental"
 )
 
 var (

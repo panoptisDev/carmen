@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -166,7 +166,7 @@ func processFile(file, licenseHeader string, checkOnly bool) error {
 	}
 
 	// this means the file has an old license header, we need to replace it
-	if strings.Contains(lines[0], "Sonic Operations Ltd") {
+	if strings.Contains(lines[0], "Pano Operations Ltd") {
 		// search for the first empty line after the old license header
 		for i, line := range lines {
 			if strings.TrimSpace(line) == "" {

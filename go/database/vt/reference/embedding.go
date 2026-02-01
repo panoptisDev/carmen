@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -14,9 +14,9 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/carmen/go/database/vt/commit"
-	"github.com/0xsoniclabs/carmen/go/database/vt/reference/trie"
+	"github.com/panoptisDev/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/database/vt/commit"
+	"github.com/panoptisDev/carmen/go/database/vt/reference/trie"
 	"github.com/holiman/uint256"
 )
 
@@ -51,7 +51,7 @@ func (e *embedding) getCodeHashKey(address common.Address) trie.Key {
 
 func (e *embedding) getCodeChunkKey(address common.Address, chunkNumber int) trie.Key {
 	// Derived from
-	// https://github.com/0xsoniclabs/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L188
+	// https://github.com/panoptisDev/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L188
 	var (
 		chunk                  = uint256.NewInt(uint64(chunkNumber))
 		chunkOffset            = new(uint256.Int).Add(codeOffset, chunk)
@@ -65,7 +65,7 @@ func (e *embedding) getCodeChunkKey(address common.Address, chunkNumber int) tri
 // address/key pair.
 func (e *embedding) getStorageKey(address common.Address, key common.Key) trie.Key {
 	// Derived from
-	// https://github.com/0xsoniclabs/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L203
+	// https://github.com/panoptisDev/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L203
 
 	var suffix byte
 	var treeIndex uint256.Int
@@ -137,7 +137,7 @@ func _getTrieKey(
 	subIndex byte,
 ) trie.Key {
 	// Compute the key for the given address and index.
-	// Inspired by https://github.com/0xsoniclabs/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L116
+	// Inspired by https://github.com/panoptisDev/go-ethereum/blob/e563918a84b4104e44935ddc6850f11738dcc3f5/trie/utils/verkle.go#L116
 
 	// The key is computed by:
 	//   C = Commit([2+256*64,address_low,address_high,tree_index_low,tree_index_high])

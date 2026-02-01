@@ -11,9 +11,9 @@ package mpt
 import (
 	reflect "reflect"
 
-	common "github.com/0xsoniclabs/carmen/go/common"
-	amount "github.com/0xsoniclabs/carmen/go/common/amount"
-	shared "github.com/0xsoniclabs/carmen/go/database/mpt/shared"
+	common "github.com/panoptisDev/carmen/go/common"
+	amount "github.com/panoptisDev/carmen/go/common/amount"
+	shared "github.com/panoptisDev/carmen/go/database/mpt/shared"
 	gomock "go.uber.org/mock/gomock"
 )
 

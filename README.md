@@ -1,7 +1,7 @@
-Sonic-DB(Carmen) is licensed under the [Business Source License (BSL)](LICENSE). 
-The BSL prohibits Sonic-DB (Carmen) from being used in production by any other project. 
+Pano-DB(Carmen) is licensed under the [Business Source License (BSL)](LICENSE). 
+The BSL prohibits Pano-DB (Carmen) from being used in production by any other project. 
 Anyone can view or use the licensed code for internal or testing purposes. 
-Still, commercial use is limited to Sonic Operations Ltd and Sonic users operating on Sonic's mainnet and/or testnet.
+Still, commercial use is limited to Pano Operations Ltd and Pano users operating on Pano's mainnet and/or testnet.
 
 Carmen is a fast and space-conservative database for blockchains. 
 It outperforms other projects in transaction speed and space consumption. 

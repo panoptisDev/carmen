@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -16,17 +16,17 @@ import (
 	"io"
 	"testing"
 
-	"github.com/0xsoniclabs/carmen/go/backend"
-	"github.com/0xsoniclabs/carmen/go/backend/depot"
-	"github.com/0xsoniclabs/carmen/go/backend/depot/cache"
-	"github.com/0xsoniclabs/carmen/go/backend/depot/file"
-	"github.com/0xsoniclabs/carmen/go/backend/depot/ldb"
-	"github.com/0xsoniclabs/carmen/go/backend/depot/memory"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree/htfile"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree/htldb"
-	"github.com/0xsoniclabs/carmen/go/backend/hashtree/htmemory"
-	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/panoptisDev/carmen/go/backend"
+	"github.com/panoptisDev/carmen/go/backend/depot"
+	"github.com/panoptisDev/carmen/go/backend/depot/cache"
+	"github.com/panoptisDev/carmen/go/backend/depot/file"
+	"github.com/panoptisDev/carmen/go/backend/depot/ldb"
+	"github.com/panoptisDev/carmen/go/backend/depot/memory"
+	"github.com/panoptisDev/carmen/go/backend/hashtree"
+	"github.com/panoptisDev/carmen/go/backend/hashtree/htfile"
+	"github.com/panoptisDev/carmen/go/backend/hashtree/htldb"
+	"github.com/panoptisDev/carmen/go/backend/hashtree/htmemory"
+	"github.com/panoptisDev/carmen/go/common"
 )
 
 // test depot parameters (different from benchmark depot parameters)

@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Sonic Operations Ltd
+// Copyright (c) 2025 Pano Operations Ltd
 //
 // Use of this software is governed by the Business Source License included
-// in the LICENSE file and at soniclabs.com/bsl11.
+// in the LICENSE file and at panoptisdev.com/bsl11.
 //
 // Change Date: 2028-4-16
 //
@@ -21,8 +21,8 @@ package io
 import (
 	reflect "reflect"
 
-	common "github.com/0xsoniclabs/carmen/go/common"
-	mpt "github.com/0xsoniclabs/carmen/go/database/mpt"
+	common "github.com/panoptisDev/carmen/go/common"
+	mpt "github.com/panoptisDev/carmen/go/database/mpt"
 	gomock "go.uber.org/mock/gomock"
 )
 
